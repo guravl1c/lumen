@@ -1,0 +1,406 @@
+const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
+const path = require('path');
+const fs = require('fs');
+const { spawn } = require('child_process');
+const http = require('http');
+const db = require('./src/database');
+
+// ============================================
+// ПУТИ
+// ============================================
+// В упакованном приложении .exe лежат в app.asar.unpacked/bin/
+// В разработке (npm start) — в ./bin/
+const BIN_DIR = __dirname.includes('app.asar')
+  ? path.join(__dirname.replace('app.asar', 'app.asar.unpacked'), 'bin')
+  : path.join(__dirname, 'bin');
+
+const APP_EXE = path.join(BIN_DIR, 'app.exe');
+const CLO_PATH = path.join(BIN_DIR, 'clo.exe');
+const NGROK_PATH = path.join(BIN_DIR, 'ngrok.exe');
+
+const CLOUDPUB_URL = 'https://huskily-compelling-primate.cloudpub.ru';
+
+console.log('[Пути] BIN_DIR =', BIN_DIR);
+console.log('[Пути] APP_EXE =', APP_EXE, fs.existsSync(APP_EXE) ? '✓' : '✗');
+console.log('[Пути] CLO_PATH =', CLO_PATH, fs.existsSync(CLO_PATH) ? '✓' : '✗');
+console.log('[Пути] NGROK_PATH =', NGROK_PATH, fs.existsSync(NGROK_PATH) ? '✓' : '✗');
+
+// ============================================
+// ПРОЦЕССЫ
+// ============================================
+let mainWindow = null;
+let teacherWindow = null;
+let flaskProcess = null;
+let cloudpubProcess = null;
+let ngrokProcess = null;
+
+let currentLessonMaterial = null;
+let currentLessonClass = null;
+
+function createWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1400, height: 900, minWidth: 1000, minHeight: 700,
+    title: 'Детектор взрыва мозга',
+    backgroundColor: '#0f1220',
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true, nodeIntegration: false
+    }
+  });
+  mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  mainWindow.on('closed', () => { mainWindow = null; });
+}
+
+// ============================================
+// FLASK
+// ============================================
+function startFlask() {
+  if (flaskProcess) return { ok: false, msg: 'Flask уже запущен' };
+
+  if (!fs.existsSync(APP_EXE)) {
+    console.error('[Flask] app.exe не найден:', APP_EXE);
+    return { ok: false, msg: 'app.exe не найден по пути ' + APP_EXE };
+  }
+
+  try {
+    flaskProcess = spawn(APP_EXE, [], {
+      cwd: path.dirname(APP_EXE),
+      windowsHide: true
+    });
+    flaskProcess.stdout.on('data', (d) => console.log('[Flask]', d.toString().trim()));
+    flaskProcess.stderr.on('data', (d) => console.log('[Flask err]', d.toString().trim()));
+    flaskProcess.on('close', (code) => {
+      console.log('[Flask] код', code);
+      flaskProcess = null;
+      if (mainWindow) mainWindow.webContents.send('flask-status', { running: false });
+    });
+    waitForServer(10000).then((ok) => {
+      if (mainWindow) mainWindow.webContents.send('flask-status', { running: ok });
+      if (ok) {
+        setTimeout(async () => {
+          if (currentLessonMaterial) await sendMaterialToFlask();
+          if (currentLessonClass) await sendClassToFlask();
+        }, 500);
+      }
+    });
+    return { ok: true, msg: 'Flask запускается' };
+  } catch (e) { return { ok: false, msg: e.message }; }
+}
+
+function stopFlask() {
+  if (!flaskProcess) return { ok: false };
+  try { flaskProcess.kill(); flaskProcess = null; return { ok: true }; }
+  catch (e) { return { ok: false }; }
+}
+
+function waitForServer(timeoutMs) {
+  const start = Date.now();
+  return new Promise((resolve) => {
+    function check() {
+      if (Date.now() - start > timeoutMs) return resolve(false);
+      const req = http.get('http://localhost:5000/', (res) => { res.resume(); resolve(true); });
+      req.on('error', () => setTimeout(check, 500));
+      req.setTimeout(500, () => { req.destroy(); });
+    }
+    check();
+  });
+}
+
+function checkFlaskRunning() {
+  return new Promise((resolve) => {
+    const req = http.get('http://localhost:5000/', (res) => { res.resume(); resolve(true); });
+    req.on('error', () => resolve(false));
+    req.setTimeout(800, () => { req.destroy(); resolve(false); });
+  });
+}
+
+function postJSON(pathStr, data) {
+  return new Promise((resolve) => {
+    const body = JSON.stringify(data || {});
+    const req = http.request({
+      hostname: 'localhost', port: 5000, path: pathStr,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+    }, (res) => {
+      let d = '';
+      res.on('data', (chunk) => { d += chunk; });
+      res.on('end', () => { resolve(true); });
+    });
+    req.on('error', () => resolve(false));
+    req.write(body);
+    req.end();
+  });
+}
+
+async function sendMaterialToFlask() {
+  const materialToSend = currentLessonMaterial ? {
+    id: currentLessonMaterial.material_id,
+    title: currentLessonMaterial.title,
+    subject: currentLessonMaterial.subject || '',
+    grade: currentLessonMaterial.grade || '',
+    questions: currentLessonMaterial.questions || [],
+    theory: currentLessonMaterial.theory || [],
+    show_theory_to_students: currentLessonMaterial.show_theory_to_students || false,
+  } : null;
+  return postJSON('/api/set-lesson-material', materialToSend);
+}
+
+async function sendClassToFlask() {
+  const classToSend = currentLessonClass ? {
+    id: currentLessonClass.class_id,
+    title: currentLessonClass.title,
+    students: currentLessonClass.students || []
+  } : null;
+  return postJSON('/api/set-lesson-class', classToSend);
+}
+
+// ============================================
+// CLOUDPUB
+// ============================================
+function startCloudpub() {
+  if (cloudpubProcess) return { ok: false };
+  if (!fs.existsSync(CLO_PATH)) {
+    console.error('[CloudPub] clo.exe не найден:', CLO_PATH);
+    return { ok: false, msg: 'clo.exe не найден' };
+  }
+  try {
+    cloudpubProcess = spawn(CLO_PATH, ['publish', 'http', '5000'], {
+      cwd: path.dirname(CLO_PATH),
+      windowsHide: true
+    });
+    cloudpubProcess.stdout.on('data', (d) => console.log('[CloudPub]', d.toString().trim()));
+    cloudpubProcess.stderr.on('data', (d) => console.log('[CloudPub err]', d.toString().trim()));
+    cloudpubProcess.on('close', (code) => {
+      console.log('[CloudPub] код', code);
+      cloudpubProcess = null;
+      if (mainWindow) mainWindow.webContents.send('cloudpub-status', { running: false });
+    });
+    setTimeout(() => {
+      if (mainWindow) mainWindow.webContents.send('cloudpub-status', { running: true, url: CLOUDPUB_URL });
+    }, 3000);
+    return { ok: true };
+  } catch (e) { return { ok: false }; }
+}
+
+function stopCloudpub() {
+  if (!cloudpubProcess) return { ok: false };
+  try { cloudpubProcess.kill(); cloudpubProcess = null; return { ok: true }; }
+  catch (e) { return { ok: false }; }
+}
+
+// ============================================
+// NGROK
+// ============================================
+function startNgrok() {
+  if (ngrokProcess) return { ok: false };
+  if (!fs.existsSync(NGROK_PATH)) {
+    console.error('[Ngrok] ngrok.exe не найден:', NGROK_PATH);
+    return { ok: false };
+  }
+  try {
+    ngrokProcess = spawn(NGROK_PATH, ['http', '5000'], { windowsHide: true });
+    ngrokProcess.stdout.on('data', (d) => console.log('[Ngrok]', d.toString().trim()));
+    ngrokProcess.stderr.on('data', (d) => console.log('[Ngrok err]', d.toString().trim()));
+    ngrokProcess.on('close', () => { ngrokProcess = null; });
+    return { ok: true };
+  } catch (e) { return { ok: false }; }
+}
+function stopNgrok() {
+  if (!ngrokProcess) return { ok: false };
+  try { ngrokProcess.kill(); ngrokProcess = null; return { ok: true }; }
+  catch (e) { return { ok: false }; }
+}
+
+// ============================================
+// IPC — ОСНОВНОЕ
+// ============================================
+ipcMain.handle('start-flask', () => startFlask());
+ipcMain.handle('stop-flask', () => stopFlask());
+ipcMain.handle('check-flask', async () => ({ running: await checkFlaskRunning() }));
+ipcMain.handle('start-cloudpub', () => startCloudpub());
+ipcMain.handle('stop-cloudpub', () => stopCloudpub());
+ipcMain.handle('start-ngrok', () => startNgrok());
+ipcMain.handle('stop-ngrok', () => stopNgrok());
+ipcMain.handle('get-cloudpub-url', () => CLOUDPUB_URL);
+ipcMain.handle('open-external', (e, url) => shell.openExternal(url));
+
+// ============================================
+// IPC — МАТЕРИАЛ УРОКА
+// ============================================
+ipcMain.handle('set-lesson-material', async (e, materialId) => {
+  if (materialId === null) {
+    currentLessonMaterial = null;
+    await sendMaterialToFlask();
+    return { ok: true, material: null };
+  }
+  const material = db.getMaterial(materialId);
+  if (!material) return { ok: false, msg: 'Материал не найден' };
+  currentLessonMaterial = {
+    material_id: material.id,
+    title: material.title,
+    subject: material.subject || '',
+    grade: material.grade || '',
+    questions: material.questions || [],
+    theory: material.theory || [],
+    show_theory_to_students: material.show_theory_to_students ? true : false,
+  };
+  const ok = await checkFlaskRunning();
+  if (ok) await sendMaterialToFlask();
+  return { ok: true, material: currentLessonMaterial };
+});
+ipcMain.handle('get-lesson-material', () => currentLessonMaterial);
+
+// ============================================
+// IPC — КЛАСС УРОКА
+// ============================================
+ipcMain.handle('set-lesson-class', async (e, classId) => {
+  if (classId === null) {
+    currentLessonClass = null;
+    await sendClassToFlask();
+    return { ok: true, class: null };
+  }
+  const cls = db.getClass(classId);
+  if (!cls) return { ok: false, msg: 'Класс не найден' };
+  currentLessonClass = {
+    class_id: cls.id,
+    title: cls.title,
+    students: (cls.students || []).map(s => s.full_name)
+  };
+  const ok = await checkFlaskRunning();
+  if (ok) await sendClassToFlask();
+  return { ok: true, class: currentLessonClass };
+});
+ipcMain.handle('get-lesson-class', () => currentLessonClass);
+
+// ============================================
+// IPC — КЛАССЫ
+// ============================================
+ipcMain.handle('classes:list', () => db.listClasses());
+ipcMain.handle('classes:get', (e, id) => db.getClass(id));
+ipcMain.handle('classes:create', (e, data) => db.createClass(data));
+ipcMain.handle('classes:update', (e, id, data) => db.updateClass(id, data));
+ipcMain.handle('classes:delete', (e, id) => db.deleteClass(id));
+ipcMain.handle('students:add', (e, classId, fullName) => db.addStudentToClass(classId, fullName));
+ipcMain.handle('students:addBulk', (e, classId, namesText) => db.addStudentsBulk(classId, namesText));
+ipcMain.handle('students:delete', (e, id) => db.deleteStudent(id));
+ipcMain.handle('students:update', (e, id, fullName) => db.updateStudent(id, fullName));
+
+// ============================================
+// IPC — МАТЕРИАЛЫ
+// ============================================
+ipcMain.handle('materials:list', () => db.listMaterials());
+ipcMain.handle('materials:get', (e, id) => db.getMaterial(id));
+ipcMain.handle('materials:create', (e, data) => db.createMaterial(data));
+ipcMain.handle('materials:update', (e, id, data) => db.updateMaterial(id, data));
+ipcMain.handle('materials:delete', (e, id) => db.deleteMaterial(id));
+ipcMain.handle('materials:toggleFavorite', (e, id) => db.toggleFavorite(id));
+ipcMain.handle('questions:create', (e, materialId, data) => db.createQuestion(materialId, data));
+ipcMain.handle('questions:update', (e, id, data) => db.updateQuestion(id, data));
+ipcMain.handle('questions:delete', (e, id) => db.deleteQuestion(id));
+
+// ============================================
+// IPC — ТЕОРИЯ
+// ============================================
+ipcMain.handle('theory:list', (e, materialId) => db.listTheory(materialId));
+ipcMain.handle('theory:createNote', (e, materialId, data) => db.createTheoryNote(materialId, data));
+ipcMain.handle('theory:createLink', (e, materialId, data) => db.createTheoryLink(materialId, data));
+ipcMain.handle('theory:createFile', (e, materialId, data) => db.createTheoryFile(materialId, data));
+ipcMain.handle('theory:update', (e, id, data) => db.updateTheory(id, data));
+ipcMain.handle('theory:delete', (e, id) => db.deleteTheory(id));
+ipcMain.handle('theory:openFile', (e, id) => {
+  const info = db.getTheoryFilePath(id);
+  if (!info) return { ok: false };
+  shell.openPath(info.path);
+  return { ok: true };
+});
+ipcMain.handle('theory:pickFile', async (e, fileType) => {
+  const filters = fileType === 'image'
+    ? [{ name: 'Картинки', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'] }]
+    : [{ name: 'Документы', extensions: ['pdf', 'docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls', 'txt', 'zip'] }];
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile'],
+    filters
+  });
+  if (result.canceled || !result.filePaths.length) return { ok: false };
+  const filePath = result.filePaths[0];
+  const fileName = path.basename(filePath);
+  const stats = fs.statSync(filePath);
+  return { ok: true, filePath, fileName, size: stats.size };
+});
+ipcMain.handle('theory:readFileBase64', (e, id) => {
+  const info = db.getTheoryFilePath(id);
+  if (!info) return null;
+  try {
+    const data = fs.readFileSync(info.path);
+    const ext = path.extname(info.path).toLowerCase().replace('.', '');
+    const mimeTypes = {
+      png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+      gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml',
+      pdf: 'application/pdf'
+    };
+    const mime = mimeTypes[ext] || 'application/octet-stream';
+    return `data:${mime};base64,${data.toString('base64')}`;
+  } catch (e) { return null; }
+});
+
+// ============================================
+// IPC — УРОКИ
+// ============================================
+ipcMain.handle('lessons:list', (e, limit) => db.listLessons(limit || 50));
+ipcMain.handle('lessons:get', (e, id) => db.getLesson(id));
+ipcMain.handle('lessons:create', (e, data) => db.createLesson(data));
+ipcMain.handle('lessons:finish', (e, id, stats) => db.finishLesson(id, stats));
+ipcMain.handle('lessons:delete', (e, id) => db.deleteLesson(id));
+ipcMain.handle('answers:save', (e, data) => db.saveAnswer(data));
+
+// ============================================
+// IPC — НАСТРОЙКИ
+// ============================================
+ipcMain.handle('settings:get', (e, key, def) => db.getSetting(key, def));
+ipcMain.handle('settings:set', (e, key, value) => db.setSetting(key, value));
+ipcMain.handle('settings:all', () => db.getAllSettings());
+
+// ============================================
+// IPC — ПАНЕЛЬ УЧИТЕЛЯ
+// ============================================
+ipcMain.handle('open-teacher', () => {
+  if (teacherWindow && !teacherWindow.isDestroyed()) {
+    teacherWindow.focus();
+    return { ok: true };
+  }
+  teacherWindow = new BrowserWindow({
+    width: 1400, height: 900,
+    title: 'Панель учителя — Детектор',
+    backgroundColor: '#0f1220',
+    autoHideMenuBar: true,
+    webPreferences: { contextIsolation: true, nodeIntegration: false }
+  });
+  teacherWindow.loadURL('http://localhost:5000/teacher');
+  teacherWindow.on('closed', () => { teacherWindow = null; });
+  return { ok: true };
+});
+ipcMain.handle('is-teacher-open', () => {
+  return teacherWindow && !teacherWindow.isDestroyed();
+});
+
+// ============================================
+// APP
+// ============================================
+app.whenReady().then(() => {
+  createWindow();
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+});
+
+app.on('window-all-closed', () => {
+  if (flaskProcess) { try { flaskProcess.kill(); } catch(e){} }
+  if (cloudpubProcess) { try { cloudpubProcess.kill(); } catch(e){} }
+  if (ngrokProcess) { try { ngrokProcess.kill(); } catch(e){} }
+  if (process.platform !== 'darwin') app.quit();
+});

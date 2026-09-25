@@ -1,0 +1,68 @@
+{
+  "name": "brain-detector-desktop",
+  "version": "1.0.0",
+  "description": "Детектор взрыва мозга — приложение для учителя",
+  "main": "main.js",
+  "author": "Ольга",
+  "license": "MIT",
+  "type": "commonjs",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^44.4.5",
+    "electron-builder": "^25.1.8"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.0.3"
+  },
+  "build": {
+    "appId": "ru.braindetector.desktop",
+    "nodeGypRebuild": false,
+    "npmRebuild": false,
+    "productName": "Детектор взрыва мозга",
+    "copyright": "© 2026 Ольга",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "src/**/*",
+      "bin/**/*",
+      "node_modules/better-sqlite3/**/*",
+      "node_modules/node-addon-api/**/*"
+    ],
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**/*",
+      "bin/**/*"
+    ],
+    "extraMetadata": {
+      "main": "main.js"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Детектор взрыва мозга",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "deleteAppDataOnUninstall": false
+    }
+  }
+}

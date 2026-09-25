@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Детектор взрыва мозга</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-icon">🧠</div>
+      <div class="brand-text">
+        <div class="brand-name">Детектор</div>
+        <div class="brand-sub">взрыва мозга</div>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <button class="nav-item active" data-view="lesson" onclick="switchView('lesson')">
+        <span class="nav-icon">🎛️</span>
+        <span class="nav-label">Урок</span>
+      </button>
+      <button class="nav-item" data-view="materials" onclick="switchView('materials')">
+        <span class="nav-icon">📁</span>
+        <span class="nav-label">Материалы</span>
+        <span class="nav-badge" id="materials-badge" style="display:none;">0</span>
+      </button>
+      <button class="nav-item" data-view="classes" onclick="switchView('classes')">
+        <span class="nav-icon">📚</span>
+        <span class="nav-label">Классы</span>
+        <span class="nav-badge" id="classes-badge" style="display:none;">0</span>
+      </button>
+      <button class="nav-item" data-view="history" onclick="switchView('history')">
+        <span class="nav-icon">📊</span>
+        <span class="nav-label">История</span>
+      </button>
+      <button class="nav-item" data-view="settings" onclick="switchView('settings')">
+        <span class="nav-icon">⚙️</span>
+        <span class="nav-label">Настройки</span>
+      </button>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="status-dot" id="status-dot"></div>
+      <span id="status-text">Остановлено</span>
+    </div>
+  </aside>
+
+  <main class="content">
+
+    <section class="view active" id="view-lesson">
+      <div class="view-header">
+        <h1>🎛️ Урок</h1>
+        <p class="view-sub">Выберите класс и материал, запустите сервер, ведите урок</p>
+      </div>
+
+      <div class="lesson-pickers">
+        <div id="lesson-class-empty" class="picker-card picker-empty">
+          <div class="picker-icon">📚</div>
+          <div class="picker-content">
+            <div class="picker-title">Класс не выбран</div>
+            <div class="picker-sub">Без класса — любой может зайти</div>
+          </div>
+          <button class="btn btn-primary" onclick="openClassPicker()">📚 Выбрать класс</button>
+        </div>
+        <div id="lesson-class-chosen" class="picker-card picker-chosen" style="display:none;">
+          <div class="picker-icon">📚</div>
+          <div class="picker-content">
+            <div class="picker-title" id="lesson-class-title">—</div>
+            <div class="picker-sub" id="lesson-class-sub">—</div>
+          </div>
+          <button class="btn btn-small btn-copy" onclick="openClassPicker()">Заменить</button>
+          <button class="btn btn-small btn-copy" onclick="clearLessonClass()">✕</button>
+        </div>
+
+        <div id="lesson-material-empty" class="picker-card picker-empty">
+          <div class="picker-icon">📁</div>
+          <div class="picker-content">
+            <div class="picker-title">Материал не выбран</div>
+            <div class="picker-sub">Без материала — вопросы вручную</div>
+          </div>
+          <button class="btn btn-primary" onclick="openMaterialPicker()">📁 Выбрать материал</button>
+        </div>
+        <div id="lesson-material-chosen" class="picker-card picker-chosen" style="display:none;">
+          <div class="picker-icon">📁</div>
+          <div class="picker-content">
+            <div class="picker-title" id="lesson-material-title">—</div>
+            <div class="picker-sub" id="lesson-material-sub">—</div>
+          </div>
+          <button class="btn btn-small btn-copy" onclick="openMaterialPicker()">Заменить</button>
+          <button class="btn btn-small btn-copy" onclick="clearLessonMaterial()">✕</button>
+        </div>
+      </div>
+
+      <div class="lesson-status">
+        <div class="status-card" id="status-card">
+          <div class="status-icon">⏸️</div>
+          <div class="status-content">
+            <div class="status-title" id="status-title">Готово к запуску</div>
+            <div class="status-sub" id="status-sub">Нажмите «Запустить приложение»</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="lesson-actions">
+        <button id="btn-start" class="btn btn-primary btn-large" onclick="startAll()">
+          ▶️ Запустить приложение
+        </button>
+        <div class="btn-row">
+          <button id="btn-teacher" class="btn btn-teacher" onclick="openTeacher()" disabled>
+            📊 Панель учителя
+          </button>
+          <button id="btn-stop" class="btn btn-stop" onclick="stopAll()" disabled>
+            ⏹ Остановить
+          </button>
+        </div>
+      </div>
+
+      <div id="link-box" class="link-box" style="display:none;">
+        <div class="link-icon">🌐</div>
+        <div class="link-content">
+          <div class="link-label">Ссылка для учеников (CloudPub)</div>
+          <div class="link-url" id="link-url">—</div>
+        </div>
+        <div class="link-actions">
+          <button class="btn-small btn-copy" onclick="copyLink()">📋 Копировать</button>
+          <button class="btn-small btn-copy" onclick="openStudent()">🎓 Ученик</button>
+        </div>
+      </div>
+
+      <div class="lesson-steps">
+        <h3>Как провести урок</h3>
+        <ol class="steps-list">
+          <li>Нажмите <b>📚 Выбрать класс</b> (опционально)</li>
+          <li>Нажмите <b>📁 Выбрать материал</b> (опционально)</li>
+          <li>Нажмите <b>▶️ Запустить приложение</b></li>
+          <li>Отправьте ссылку ученикам</li>
+          <li>Нажмите <b>📊 Панель учителя</b> — ведите урок</li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="view" id="view-materials">
+      <div class="view-header">
+        <h1>📁 Мои материалы</h1>
+        <p class="view-sub">Заготовки уроков — теория, вопросы, квизы, ключевые слова</p>
+      </div>
+
+      <div class="materials-toolbar">
+        <button class="btn btn-primary" onclick="createMaterial()">➕ Создать материал</button>
+        <input type="text" id="materials-search" class="search-input"
+               placeholder="🔍 Поиск по названию…" oninput="renderMaterials()">
+      </div>
+
+      <div id="materials-list" class="materials-list">
+        <div class="empty-state">
+          <div class="empty-icon">📁</div>
+          <div class="empty-title">Пока нет материалов</div>
+          <div class="empty-sub">Создайте первый материал — набор вопросов для урока</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-classes">
+      <div class="view-header">
+        <h1>📚 Мои классы</h1>
+        <p class="view-sub">Списки учеников для быстрого выбора перед уроком</p>
+      </div>
+
+      <div class="materials-toolbar">
+        <button class="btn btn-primary" onclick="createClass()">➕ Создать класс</button>
+        <input type="text" id="classes-search" class="search-input"
+               placeholder="🔍 Поиск по названию…" oninput="renderClasses()">
+      </div>
+
+      <div id="classes-list" class="materials-list">
+        <div class="empty-state">
+          <div class="empty-icon">📚</div>
+          <div class="empty-title">Пока нет классов</div>
+          <div class="empty-sub">Создайте класс — список учеников для урока</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-history">
+      <div class="view-header">
+        <h1>📊 История уроков</h1>
+        <p class="view-sub">Все проведённые уроки с полной статистикой</p>
+      </div>
+
+      <div id="history-list" class="history-list">
+        <div class="empty-state">
+          <div class="empty-icon">📊</div>
+          <div class="empty-title">Пока нет уроков</div>
+          <div class="empty-sub">Проведите первый урок — он появится здесь</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-settings">
+      <div class="view-header">
+        <h1>⚙️ Настройки</h1>
+        <p class="view-sub">Параметры приложения</p>
+      </div>
+
+      <div class="settings-section">
+        <h3>🎨 Интерфейс</h3>
+        <label class="setting-row">
+          <span>Светлая тема</span>
+          <input type="checkbox" class="switch" id="set-theme" onchange="toggleTheme(this.checked)">
+        </label>
+      </div>
+
+      <div class="settings-section">
+        <h3>ℹ️ О приложении</h3>
+        <div class="about-info">
+          <div><b>Детектор взрыва мозга</b></div>
+          <div>Версия 1.0.0 · Electron</div>
+          <div style="margin-top:8px; color: #8a92b0;">Приложение для учителя · Формирующее оценивание в реальном времени</div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- МОДАЛКА: Создать материал -->
+<div id="modal-create-material" class="modal" style="display:none;">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h2>➕ Новый материал</h2>
+      <button class="modal-close" onclick="closeCreateModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="modal-field">
+        <span>Название</span>
+        <input type="text" id="new-material-title" placeholder="Теорема Пифагора">
+      </label>
+      <label class="modal-field">
+        <span>Описание (необязательно)</span>
+        <input type="text" id="new-material-desc" placeholder="Урок для 8 класса">
+      </label>
+      <div class="modal-row">
+        <label class="modal-field">
+          <span>Предмет</span>
+          <input type="text" id="new-material-subject" placeholder="Геометрия">
+        </label>
+        <label class="modal-field">
+          <span>Класс</span>
+          <input type="text" id="new-material-grade" placeholder="8А">
+        </label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-stop" onclick="closeCreateModal()">Отмена</button>
+      <button class="btn btn-primary" onclick="confirmCreateMaterial()">Создать</button>
+    </div>
+  </div>
+</div>
+
+<!-- МОДАЛКА: Редактор материала -->
+<div id="modal-edit-material" class="modal modal-wide" style="display:none;">
+  <div class="modal-box modal-box-large">
+    <div class="modal-header">
+      <h2 id="edit-material-title-header">📝 Материал</h2>
+      <button class="modal-close" onclick="closeEditMaterial()">✕</button>
+    </div>
+    <div class="tabs-nav" id="material-tabs">
+      <button class="tab-btn active" data-tab="theory" onclick="switchMaterialTab('theory')">
+        📖 Теория <span class="tab-badge" id="theory-tab-count">0</span>
+      </button>
+      <button class="tab-btn" data-tab="questions" onclick="switchMaterialTab('questions')">
+        ❓ Вопросы <span class="tab-badge" id="questions-tab-count">0</span>
+      </button>
+      <button class="tab-btn" data-tab="settings" onclick="switchMaterialTab('settings')">
+        ⚙️ Настройки
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="material-tab-content active" id="tab-theory">
+        <div class="theory-toolbar">
+          <button class="btn btn-small btn-primary" onclick="addTheoryNote()">📄 Заметка</button>
+          <button class="btn btn-small btn-primary" onclick="addTheoryLink()">🔗 Ссылка</button>
+          <button class="btn btn-small btn-primary" onclick="addTheoryImage()">🖼️ Картинка</button>
+          <button class="btn btn-small btn-primary" onclick="addTheoryFile()">📎 Файл</button>
+        </div>
+        <div id="theory-list" class="theory-list">
+          <div class="empty-questions">
+            <div class="empty-icon-small">📖</div>
+            <div>Пока нет теории</div>
+            <div class="sub-small">Добавьте заметки, картинки, файлы или ссылки</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="material-tab-content" id="tab-questions">
+        <div class="questions-header">
+          <h3>Вопросы <span id="edit-questions-count" class="count-badge">0</span></h3>
+          <button class="btn btn-primary btn-small" onclick="addQuestion()">➕ Добавить вопрос</button>
+        </div>
+        <div id="edit-questions-list" class="questions-editor-list">
+          <div class="empty-questions">
+            <div class="empty-icon-small">📋</div>
+            <div>Пока нет вопросов</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="material-tab-content" id="tab-settings">
+        <div class="modal-row">
+          <label class="modal-field">
+            <span>Название</span>
+            <input type="text" id="edit-material-title" placeholder="Название">
+          </label>
+          <label class="modal-field">
+            <span>Предмет</span>
+            <input type="text" id="edit-material-subject" placeholder="Геометрия">
+          </label>
+        </div>
+        <div class="modal-row">
+          <label class="modal-field">
+            <span>Описание</span>
+            <input type="text" id="edit-material-desc" placeholder="Описание">
+          </label>
+          <label class="modal-field">
+            <span>Класс</span>
+            <input type="text" id="edit-material-grade" placeholder="8А">
+          </label>
+        </div>
+        <label class="setting-row" style="margin-top: 16px;">
+          <span>📖 Показывать теорию ученикам во время урока</span>
+          <input type="checkbox" class="switch" id="edit-material-show-theory">
+        </label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-stop" onclick="deleteCurrentMaterial()" style="margin-right:auto;">🗑 Удалить</button>
+      <button class="btn btn-stop" onclick="closeEditMaterial()">Закрыть</button>
+      <button class="btn btn-primary" onclick="saveMaterialChanges()">💾 Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- МОДАЛКА: Редактор вопроса -->
+<div id="modal-edit-question" class="modal" style="display:none;">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h2 id="question-modal-title">📌 Вопрос</h2>
+      <button class="modal-close" onclick="closeQuestionModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="modal-field">
+        <span>Текст вопроса</span>
+        <input type="text" id="q-text" placeholder="Кто доказал теорему Пифагора?">
+      </label>
+      <label class="modal-field">
+        <span>Режим ответа</span>
+        <div class="mode-tabs-sm" id="q-mode-tabs">
+          <button type="button" class="mode-tab-sm" data-mode="buttons" onclick="setQMode('buttons')">🎨 Кнопки</button>
+          <button type="button" class="mode-tab-sm" data-mode="text" onclick="setQMode('text')">✍️ Текст</button>
+          <button type="button" class="mode-tab-sm" data-mode="quiz" onclick="setQMode('quiz')">🎲 Квиз</button>
+        </div>
+      </label>
+      <label class="modal-field">
+        <span>Таймер</span>
+        <select id="q-timer" class="select-input">
+          <option value="0">Без таймера</option>
+          <option value="15">15 секунд</option>
+          <option value="30" selected>30 секунд</option>
+          <option value="60">60 секунд</option>
+          <option value="120">2 минуты</option>
+        </select>
+      </label>
+      <label class="modal-field" id="q-keywords-row">
+        <span>Ключевые слова</span>
+        <input type="text" id="q-keywords" placeholder="гипотенуза, квадрат, площадь">
+      </label>
+      <div id="q-quiz-block" style="display:none;">
+        <div class="modal-row">
+          <label class="modal-field"><span>A</span><input type="text" id="q-opt-0" placeholder="Вариант A"></label>
+          <label class="modal-field"><span>B</span><input type="text" id="q-opt-1" placeholder="Вариант B"></label>
+        </div>
+        <div class="modal-row">
+          <label class="modal-field"><span>C</span><input type="text" id="q-opt-2" placeholder="Вариант C"></label>
+          <label class="modal-field"><span>D</span><input type="text" id="q-opt-3" placeholder="Вариант D"></label>
+        </div>
+        <label class="modal-field">
+          <span>Правильный вариант</span>
+          <select id="q-correct" class="select-input">
+            <option value="">Не отмечать</option>
+            <option value="0">A</option>
+            <option value="1">B</option>
+            <option value="2">C</option>
+            <option value="3">D</option>
+          </select>
+        </label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-stop" onclick="closeQuestionModal()">Отмена</button>
+      <button class="btn btn-primary" onclick="confirmQuestion()">💾 Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- МОДАЛКА: Заметка теории -->
+<div id="modal-theory-note" class="modal" style="display:none;">
+  <div class="modal-box modal-box-large">
+    <div class="modal-header">
+      <h2 id="theory-note-modal-title">📄 Заметка</h2>
+      <button class="modal-close" onclick="closeTheoryNoteModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="modal-field">
+        <span>Заголовок</span>
+        <input type="text" id="theory-note-title" placeholder="Конспект по теореме">
+      </label>
+      <label class="modal-field">
+        <span>Содержимое (поддерживается Markdown)</span>
+        <textarea id="theory-note-content" class="theory-textarea" rows="14"
+          placeholder="# Теорема Пифагора
+В прямоугольном треугольнике квадрат **гипотенузы** равен сумме квадратов катетов."></textarea>
+      </label>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-stop" onclick="closeTheoryNoteModal()">Отмена</button>
+      <button class="btn btn-primary" onclick="saveTheoryNote()">💾 Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- МОДАЛКА: Ссылка теории -->
+<div id="modal-theory-link" class="modal" style="display:none;">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h2>🔗 Ссылка</h2>
+      <button class="modal-close" onclick="closeTheoryLinkModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="modal-field">
+        <span>Название</span>
+        <input type="text" id="theory-link-title" placeholder="Видео на YouTube">
+      </label>
+      <label class="modal-field">
+        <span>URL</span>
+        <input type="text" id="theory-link-url" placeholder="https://youtube.com/watch?v=...">
+      </label>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-stop" onclick="closeTheoryLinkModal()">Отмена</button>
+      <button class="btn btn-primary" onclick="saveTheoryLink()">💾 Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- МОДАЛКА: Выбор материала -->
+<div id="modal-pick-material" class="modal" style="display:none;">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h2>📁 Выбери материал</h2>
+      <button class="modal-close" onclick="closeMaterialPicker()">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="text" id="pick-search" class="search-input" placeholder="🔍 Поиск…" oninput="renderPickList()">
+      <div id="pick-list" class="pick-list">
+        <p class="sub">Загрузка…</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- МОДАЛКА: Выбор класса -->
+<div id="modal-pick-class" class="modal" style="display:none;">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h2>📚 Выбери класс</h2>
+      <button class="modal-close" onclick="closeClassPicker()">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="text" id="pick-class-search" class="search-input" placeholder="🔍 Поиск…" oninput="renderPickClassList()">
+      <div id="pick-class-list" class="pick-list">
+        <p class="sub">Загрузка…</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- МОДАЛКА: Создать класс -->
+<div id="modal-create-class" class="modal" style="display:none;">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h2>➕ Новый класс</h2>
+      <button class="modal-close" onclick="closeCreateClass()">✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="modal-field">
+        <span>Название</span>
+        <input type="text" id="new-class-title" placeholder="8А">
+      </label>
+      <label class="modal-field">
+        <span>Описание (необязательно)</span>
+        <input type="text" id="new-class-desc" placeholder="Математический класс">
+      </label>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-stop" onclick="closeCreateClass()">Отмена</button>
+      <button class="btn btn-primary" onclick="confirmCreateClass()">Создать</button>
+    </div>
+  </div>
+</div>
+
+<!-- МОДАЛКА: Редактор класса -->
+<div id="modal-edit-class" class="modal modal-wide" style="display:none;">
+  <div class="modal-box modal-box-large">
+    <div class="modal-header">
+      <h2 id="edit-class-title-header">📚 Класс</h2>
+      <button class="modal-close" onclick="closeEditClass()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-row">
+        <label class="modal-field">
+          <span>Название</span>
+          <input type="text" id="edit-class-title" placeholder="8А">
+        </label>
+        <label class="modal-field">
+          <span>Описание</span>
+          <input type="text" id="edit-class-desc" placeholder="Описание">
+        </label>
+      </div>
+      <div class="questions-header">
+        <h3>Ученики <span id="edit-students-count" class="count-badge">0</span></h3>
+        <button class="btn btn-primary btn-small" onclick="openAddStudents()">➕ Добавить учеников</button>
+      </div>
+      <div id="edit-students-list" class="students-list">
+        <div class="empty-questions">
+          <div class="empty-icon-small">👥</div>
+          <div>Пока нет учеников</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-stop" onclick="deleteCurrentClass()" style="margin-right:auto;">🗑 Удалить класс</button>
+      <button class="btn btn-stop" onclick="closeEditClass()">Закрыть</button>
+      <button class="btn btn-primary" onclick="saveClassChanges()">💾 Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- МОДАЛКА: Добавить учеников -->
+<div id="modal-add-students" class="modal" style="display:none;">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h2>👥 Добавить учеников</h2>
+      <button class="modal-close" onclick="closeAddStudents()">✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="modal-field">
+        <span>Список учеников (по одному в строке)</span>
+        <textarea id="bulk-students-text" class="text-input" rows="10" style="font-family: Consolas, monospace; font-size: 14px; resize: vertical; min-height: 200px;"
+          placeholder="Иванов Пётр
+Петрова Анна
+Сидоров Максим"></textarea>
+      </label>
+      <p class="sub" style="font-size: 12px; margin: 0;">
+        💡 Формат: <b>Фамилия Имя</b> (через пробел). Каждое имя — с новой строки.
+      </p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-stop" onclick="closeAddStudents()">Отмена</button>
+      <button class="btn btn-primary" onclick="confirmAddStudents()">➕ Добавить</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

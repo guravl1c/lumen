@@ -1,0 +1,35 @@
+﻿# Node.js
+node_modules/
+package-lock.json
+
+# Сборка
+release/
+dist/
+build/win-unpacked/
+
+# Данные приложения
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Бинарники (большие файлы)
+bin/app.exe
+bin/clo.exe
+bin/ngrok.exe
+
+# Сборка Flask
+BrainDetector/dist/
+BrainDetector/build/
+BrainDetector/__pycache__/
+*.spec
+
+# Логи и временное
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
