@@ -1,15 +1,13 @@
 const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 const http = require('http');
 const db = require('./src/database');
 
 // ============================================
 // ПУТИ
 // ============================================
-// В упакованном приложении .exe лежат в app.asar.unpacked/bin/
-// В разработке (npm start) — в ./bin/
 const BIN_DIR = __dirname.includes('app.asar')
   ? path.join(__dirname.replace('app.asar', 'app.asar.unpacked'), 'bin')
   : path.join(__dirname, 'bin');
@@ -40,9 +38,10 @@ let currentLessonClass = null;
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400, height: 900, minWidth: 1000, minHeight: 700,
-    title: 'Детектор взрыва мозга',
+    title: 'Lumen',
     backgroundColor: '#0f1220',
     autoHideMenuBar: true,
+    icon: path.join(__dirname, 'build', 'icon.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true, nodeIntegration: false
@@ -57,16 +56,56 @@ function createWindow() {
 }
 
 // ============================================
-// FLASK
+// FLASK — утилиты
+// ============================================
+function killProcessOnPort5000() {
+  if (process.platform !== 'win32') return;
+  try {
+    const out = execSync('netstat -ano | findstr :5000', { encoding: 'utf8' });
+    const lines = out.trim().split('\n');
+    const pids = new Set();
+    for (const line of lines) {
+      if (line.includes('LISTENING')) {
+        const parts = line.trim().split(/\s+/);
+        const pid = parts[parts.length - 1];
+        if (pid && pid !== '0') pids.add(pid);
+      }
+    }
+    for (const pid of pids) {
+      try {
+        execSync(`taskkill /pid ${pid} /T /F`, { stdio: 'ignore' });
+        console.log(`[Flask] Убил старый процесс на порту 5000: PID ${pid}`);
+      } catch (e) {}
+    }
+  } catch (e) {
+    // Порт свободен — всё ок
+  }
+}
+
+function killFlaskTree() {
+  if (!flaskProcess) return;
+  try {
+    if (process.platform === 'win32') {
+      execSync(`taskkill /pid ${flaskProcess.pid} /T /F`, { stdio: 'ignore' });
+    } else {
+      flaskProcess.kill();
+    }
+  } catch (e) {}
+  flaskProcess = null;
+}
+
+// ============================================
+// FLASK — запуск/остановка
 // ============================================
 function startFlask() {
-  if (flaskProcess) return { ok: false, msg: 'Flask уже запущен' };
+  // Сначала убиваем всех, кто занял порт 5000
+  killProcessOnPort5000();
 
+  if (flaskProcess) return { ok: false, msg: 'Flask уже запущен' };
   if (!fs.existsSync(APP_EXE)) {
     console.error('[Flask] app.exe не найден:', APP_EXE);
     return { ok: false, msg: 'app.exe не найден по пути ' + APP_EXE };
   }
-
   try {
     flaskProcess = spawn(APP_EXE, [], {
       cwd: path.dirname(APP_EXE),
@@ -94,8 +133,8 @@ function startFlask() {
 
 function stopFlask() {
   if (!flaskProcess) return { ok: false };
-  try { flaskProcess.kill(); flaskProcess = null; return { ok: true }; }
-  catch (e) { return { ok: false }; }
+  killFlaskTree();
+  return { ok: true };
 }
 
 function waitForServer(timeoutMs) {
@@ -160,7 +199,101 @@ async function sendClassToFlask() {
 }
 
 // ============================================
-// CLOUDPUB
+// CLOUDPUB — АВТОРИЗАЦИЯ
+// ============================================
+function checkCloudpubAuth() {
+  return new Promise((resolve) => {
+    if (!fs.existsSync(CLO_PATH)) {
+      return resolve({ logged: false, error: 'clo.exe не найден' });
+    }
+    const proc = spawn(CLO_PATH, ['ls'], {
+      cwd: path.dirname(CLO_PATH),
+      windowsHide: true
+    });
+    let output = '';
+    let errOutput = '';
+    proc.stdout.on('data', (d) => { output += d.toString(); });
+    proc.stderr.on('data', (d) => { errOutput += d.toString(); });
+    proc.on('close', (code) => {
+      const combined = (output + errOutput).toLowerCase();
+      if (combined.includes('not logged') || combined.includes('unauthorized') || combined.includes('login required')) {
+        resolve({ logged: false });
+      } else {
+        resolve({ logged: code === 0 });
+      }
+    });
+    proc.on('error', () => resolve({ logged: false }));
+    setTimeout(() => { try { proc.kill(); } catch(e){} resolve({ logged: false }); }, 5000);
+  });
+}
+
+function loginCloudpub(email, password) {
+  return new Promise((resolve) => {
+    if (!fs.existsSync(CLO_PATH)) {
+      return resolve({ ok: false, msg: 'clo.exe не найден' });
+    }
+    if (!email || !password) {
+      return resolve({ ok: false, msg: 'Введите email и пароль' });
+    }
+
+    console.log('[CloudPub] Логин для', email);
+
+    const proc = spawn(CLO_PATH, ['login', email, password], {
+      cwd: path.dirname(CLO_PATH),
+      windowsHide: true
+    });
+
+    let output = '';
+    let errOutput = '';
+    proc.stdout.on('data', (d) => { output += d.toString(); });
+    proc.stderr.on('data', (d) => { errOutput += d.toString(); });
+
+    proc.on('close', (code) => {
+      const combined = output + errOutput;
+      console.log('[CloudPub] Ответ:', combined);
+
+      const success = code === 0 && !combined.toLowerCase().includes('error') && !combined.toLowerCase().includes('invalid');
+
+      if (success) {
+        resolve({ ok: true, msg: 'Успешный вход' });
+      } else {
+        let reason = 'Не удалось войти';
+        if (combined.toLowerCase().includes('invalid credentials') || combined.toLowerCase().includes('wrong password')) {
+          reason = 'Неверный email или пароль';
+        } else if (combined.toLowerCase().includes('email')) {
+          reason = 'Проверьте email';
+        }
+        resolve({ ok: false, msg: reason + ': ' + combined.trim().slice(0, 200) });
+      }
+    });
+    proc.on('error', (err) => resolve({ ok: false, msg: 'Ошибка запуска: ' + err.message }));
+    setTimeout(() => { try { proc.kill(); } catch(e){} resolve({ ok: false, msg: 'Таймаут — сервер не отвечает' }); }, 15000);
+  });
+}
+
+function logoutCloudpub() {
+  return new Promise((resolve) => {
+    if (!fs.existsSync(CLO_PATH)) {
+      return resolve({ ok: false, msg: 'clo.exe не найден' });
+    }
+    const proc = spawn(CLO_PATH, ['logout'], {
+      cwd: path.dirname(CLO_PATH),
+      windowsHide: true
+    });
+    let output = '';
+    proc.stdout.on('data', (d) => { output += d.toString(); });
+    proc.stderr.on('data', (d) => { output += d.toString(); });
+    proc.on('close', () => {
+      console.log('[CloudPub] Logout:', output);
+      resolve({ ok: true });
+    });
+    proc.on('error', () => resolve({ ok: false }));
+    setTimeout(() => { try { proc.kill(); } catch(e){} resolve({ ok: true }); }, 5000);
+  });
+}
+
+// ============================================
+// CLOUDPUB — ТУННЕЛЬ
 // ============================================
 function startCloudpub() {
   if (cloudpubProcess) return { ok: false };
@@ -210,11 +343,19 @@ function startNgrok() {
     return { ok: true };
   } catch (e) { return { ok: false }; }
 }
+
 function stopNgrok() {
   if (!ngrokProcess) return { ok: false };
   try { ngrokProcess.kill(); ngrokProcess = null; return { ok: true }; }
   catch (e) { return { ok: false }; }
 }
+
+// ============================================
+// IPC — CLOUDPUB АВТОРИЗАЦИЯ
+// ============================================
+ipcMain.handle('cloudpub:check', () => checkCloudpubAuth());
+ipcMain.handle('cloudpub:login', (e, email, password) => loginCloudpub(email, password));
+ipcMain.handle('cloudpub:logout', () => logoutCloudpub());
 
 // ============================================
 // IPC — ОСНОВНОЕ
@@ -375,9 +516,10 @@ ipcMain.handle('open-teacher', () => {
   }
   teacherWindow = new BrowserWindow({
     width: 1400, height: 900,
-    title: 'Панель учителя — Детектор',
+    title: 'Lumen — Панель учителя',
     backgroundColor: '#0f1220',
     autoHideMenuBar: true,
+    icon: path.join(__dirname, 'build', 'icon.ico'),
     webPreferences: { contextIsolation: true, nodeIntegration: false }
   });
   teacherWindow.loadURL('http://localhost:5000/teacher');
@@ -399,8 +541,17 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  if (flaskProcess) { try { flaskProcess.kill(); } catch(e){} }
+  // Убиваем всё дерево процессов
+  killFlaskTree();
+  if (cloudpubProcess) { try { cloudpubProcess.kill(); } catch(e){} cloudpubProcess = null; }
+  if (ngrokProcess) { try { ngrokProcess.kill(); } catch(e){} ngrokProcess = null; }
+  // Дополнительно — на всякий случай убиваем всё, что осталось на порту 5000
+  killProcessOnPort5000();
+  if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('before-quit', () => {
+  killFlaskTree();
   if (cloudpubProcess) { try { cloudpubProcess.kill(); } catch(e){} }
   if (ngrokProcess) { try { ngrokProcess.kill(); } catch(e){} }
-  if (process.platform !== 'darwin') app.quit();
 });

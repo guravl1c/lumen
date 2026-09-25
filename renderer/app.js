@@ -220,7 +220,7 @@ async function startAll() {
         setButton('btn-start', true);
       }, 3000);
     } else {
-      setStatus('Flask не запустился', 'Проверь путь к BrainDetector', 'error');
+      setStatus('Flask не запустился', 'Проверь установку Lumen', 'error');
       setButton('btn-start', false);
     }
   }, 3500);
@@ -244,6 +244,135 @@ function copyLink() {
 function openStudent() {
   if (!cloudpubUrl) return;
   window.api.openExternal(cloudpubUrl + '/student');
+}
+
+// ============================================
+// CLOUDPUB АВТОРИЗАЦИЯ
+// ============================================
+async function checkCloudpubOnStart() {
+  try {
+    const status = await window.api.checkCloudpubAuth();
+    if (!status.logged) {
+      document.getElementById('modal-cloudpub-setup').style.display = 'flex';
+    }
+  } catch (e) {
+    console.error('Ошибка проверки CloudPub:', e);
+  }
+}
+
+function closeCloudpubModal() {
+  document.getElementById('modal-cloudpub-setup').style.display = 'none';
+}
+
+function skipCloudpubSetup() {
+  showToast('CloudPub пропущен. Ученики смогут заходить только через локальную сеть.', '');
+  closeCloudpubModal();
+}
+
+async function doCloudpubLogin() {
+  const email = document.getElementById('cloudpub-email').value.trim();
+  const password = document.getElementById('cloudpub-password').value;
+  const statusEl = document.getElementById('cloudpub-status');
+  const btn = document.getElementById('cloudpub-login-btn');
+
+  if (!email || !password) {
+    statusEl.textContent = '⚠️ Заполните email и пароль';
+    statusEl.style.color = '#ff8a7a';
+    return;
+  }
+
+  statusEl.textContent = '⏳ Авторизация…';
+  statusEl.style.color = '#9aa0b4';
+  btn.disabled = true;
+
+  try {
+    const result = await window.api.loginCloudpub(email, password);
+    if (result.ok) {
+      statusEl.textContent = '✅ Успешно! Можно закрыть окно.';
+      statusEl.style.color = '#7dffb0';
+      setTimeout(() => {
+        closeCloudpubModal();
+        showToast('✅ CloudPub настроен!', 'success');
+      }, 1500);
+    } else {
+      statusEl.textContent = '❌ ' + (result.msg || 'Ошибка входа');
+      statusEl.style.color = '#ff8a7a';
+      btn.disabled = false;
+    }
+  } catch (e) {
+    statusEl.textContent = '❌ Ошибка: ' + e.message;
+    statusEl.style.color = '#ff8a7a';
+    btn.disabled = false;
+  }
+}
+
+async function openCloudpubManage() {
+  const statusEl = document.getElementById('cloudpub-manage-status');
+  const linkEl = document.getElementById('cloudpub-manage-link');
+  const logoutBtn = document.getElementById('cloudpub-logout-btn');
+
+  statusEl.textContent = '⏳ Проверка статуса…';
+  statusEl.style.color = '#9aa0b4';
+  linkEl.style.display = 'none';
+  logoutBtn.style.display = 'none';
+
+  document.getElementById('modal-cloudpub-manage').style.display = 'flex';
+
+  try {
+    const status = await window.api.checkCloudpubAuth();
+    if (status.logged) {
+      statusEl.innerHTML = '✅ <b>Авторизован</b><br>Ваш аккаунт CloudPub активен.';
+      statusEl.style.color = '#7dffb0';
+      const url = await window.api.getCloudpubUrl();
+      linkEl.textContent = url;
+      linkEl.style.display = 'block';
+      logoutBtn.style.display = 'inline-flex';
+    } else {
+      statusEl.innerHTML = '⚠️ <b>Не авторизован</b><br>Ученики смогут заходить только через локальную сеть.';
+      statusEl.style.color = '#f5c06b';
+      logoutBtn.style.display = 'none';
+    }
+  } catch (e) {
+    statusEl.textContent = 'Ошибка: ' + e.message;
+    statusEl.style.color = '#ff8a7a';
+  }
+}
+
+function closeCloudpubManage() {
+  document.getElementById('modal-cloudpub-manage').style.display = 'none';
+}
+
+async function doCloudpubLogout() {
+  if (!confirm('Выйти из CloudPub? Ученики больше не смогут подключаться через интернет.')) return;
+  await window.api.logoutCloudpub();
+  showToast('Вы вышли из CloudPub', '');
+  closeCloudpubManage();
+}
+
+// ============================================
+// ИНСТРУКЦИЯ ДЛЯ УЧИТЕЛЯ
+// ============================================
+function openHelp() {
+  const modal = document.getElementById('modal-help');
+  modal.style.display = 'flex';
+  const body = modal.querySelector('.modal-body');
+  if (body) body.scrollTop = 0;
+}
+
+function closeHelp() {
+  document.getElementById('modal-help').style.display = 'none';
+}
+
+function scrollHelpTo(sectionId) {
+  const modal = document.getElementById('modal-help');
+  const body = modal.querySelector('.modal-body');
+  const section = document.getElementById(sectionId);
+  if (body && section) {
+    body.scrollTo({
+      top: section.offsetTop - body.offsetTop - 20,
+      behavior: 'smooth'
+    });
+  }
 }
 
 // ============================================
@@ -919,7 +1048,8 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     const modals = ['modal-create-material', 'modal-edit-material', 'modal-edit-question',
                     'modal-pick-material', 'modal-pick-class', 'modal-create-class',
-                    'modal-edit-class', 'modal-add-students', 'modal-theory-note', 'modal-theory-link'];
+                    'modal-edit-class', 'modal-add-students', 'modal-theory-note', 'modal-theory-link',
+                    'modal-cloudpub-setup', 'modal-cloudpub-manage', 'modal-help'];
     for (const m of modals) {
       const el = document.getElementById(m);
       if (el && el.style.display === 'flex') { el.style.display = 'none'; return; }
@@ -938,6 +1068,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('link-url').textContent = cloudpubUrl;
     document.getElementById('link-box').style.display = 'flex';
   }
+  checkCloudpubOnStart();
   renderMaterials();
   renderClasses();
   renderLessonMaterial();

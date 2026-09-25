@@ -1,9 +1,9 @@
 {
-  "name": "brain-detector-desktop",
+  "name": "lumen",
   "version": "1.0.0",
-  "description": "Детектор взрыва мозга — приложение для учителя",
+  "description": "Lumen — Illuminate understanding. Real-time formative assessment for teachers.",
   "main": "main.js",
-  "author": "Ольга",
+  "author": "guravlic",
   "license": "MIT",
   "type": "commonjs",
   "scripts": {
@@ -18,11 +18,11 @@
     "better-sqlite3": "^13.0.3"
   },
   "build": {
-    "appId": "ru.braindetector.desktop",
+    "appId": "com.lumen.desktop",
     "nodeGypRebuild": false,
     "npmRebuild": false,
-    "productName": "Детектор взрыва мозга",
-    "copyright": "© 2026 Ольга",
+    "productName": "Lumen",
+    "copyright": "© 2026 guravlic",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -58,7 +58,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Детектор взрыва мозга",
+      "shortcutName": "Lumen",
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
       "installerHeaderIcon": "build/icon.ico",

@@ -1,35 +1,64 @@
-﻿# Node.js
-node_modules/
-package-lock.json
+﻿# ============================================
+# Lumen — .gitignore
+# ============================================
 
-# Сборка
+# === Node.js ===
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm/
+# ⚠️ package-lock.json — НЕ игнорируем, он должен быть в репозитории!
+
+# === Electron — сборка ===
 release/
 dist/
+out/
+*.asar
+app.asar.unpacked/
 build/win-unpacked/
+# ⚠️ build/icon.ico — НЕ игнорируем (нужна для сборки)
 
-# Данные приложения
+# === Данные приложения ===
 data/
 *.db
 *.db-shm
 *.db-wal
 
-# Бинарники (большие файлы)
+# === Бинарники (большие файлы) ===
 bin/app.exe
 bin/clo.exe
 bin/ngrok.exe
+bin/*.dll
 
-# Сборка Flask
-BrainDetector/dist/
-BrainDetector/build/
-BrainDetector/__pycache__/
-*.spec
+# === Python (Flask в папке Lumen) ===
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+Lumen/build/
+Lumen/dist/
+Lumen/venv/
+Lumen/.venv/
+# ⚠️ app.spec — НЕ игнорируем (нужен для пересборки)
 
-# Логи и временное
+# === Логи и временное ===
 *.log
 *.tmp
+*.bak
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# IDE
+# === IDE ===
 .vscode/
 .idea/
+*.swp
+*.swo
+
+# === Секреты ===
+.env
+.env.local
+secrets.json
+credentials.json

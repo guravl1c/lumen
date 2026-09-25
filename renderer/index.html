@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<title>Детектор взрыва мозга</title>
+<title>Lumen</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -10,10 +10,10 @@
 
   <aside class="sidebar">
     <div class="brand">
-      <div class="brand-icon">🧠</div>
+      <div class="brand-icon">💡</div>
       <div class="brand-text">
-        <div class="brand-name">Детектор</div>
-        <div class="brand-sub">взрыва мозга</div>
+        <div class="brand-name">Lumen</div>
+        <div class="brand-sub">Illuminate understanding</div>
       </div>
     </div>
 
@@ -206,6 +206,22 @@
       </div>
 
       <div class="settings-section">
+        <h3>🚀 CloudPub (связь с учениками через интернет)</h3>
+        <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+          <button class="btn btn-primary" onclick="openCloudpubManage()">Управление CloudPub</button>
+          <span class="sub" style="font-size: 13px;">Настроить аккаунт, проверить статус, выйти</span>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>📖 Помощь</h3>
+        <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+          <button class="btn btn-primary" onclick="openHelp()">Открыть инструкцию</button>
+          <span class="sub" style="font-size: 13px;">Быстрый старт, регистрация CloudPub, решение проблем</span>
+        </div>
+      </div>
+
+      <div class="settings-section">
         <h3>🎨 Интерфейс</h3>
         <label class="setting-row">
           <span>Светлая тема</span>
@@ -214,11 +230,12 @@
       </div>
 
       <div class="settings-section">
-        <h3>ℹ️ О приложении</h3>
+        <h3>ℹ️ About</h3>
         <div class="about-info">
-          <div><b>Детектор взрыва мозга</b></div>
-          <div>Версия 1.0.0 · Electron</div>
-          <div style="margin-top:8px; color: #8a92b0;">Приложение для учителя · Формирующее оценивание в реальном времени</div>
+          <div><b>Lumen</b></div>
+          <div>Illuminate understanding</div>
+          <div>Version 1.0.0 · Electron</div>
+          <div style="margin-top:8px; color: #8a92b0;">Real-time formative assessment for teachers</div>
         </div>
       </div>
     </section>
@@ -226,7 +243,7 @@
   </main>
 </div>
 
-<!-- МОДАЛКА: Создать материал -->
+<!-- ============ МОДАЛКА: Создать материал ============ -->
 <div id="modal-create-material" class="modal" style="display:none;">
   <div class="modal-box">
     <div class="modal-header">
@@ -260,7 +277,7 @@
   </div>
 </div>
 
-<!-- МОДАЛКА: Редактор материала -->
+<!-- ============ МОДАЛКА: Редактор материала ============ -->
 <div id="modal-edit-material" class="modal modal-wide" style="display:none;">
   <div class="modal-box modal-box-large">
     <div class="modal-header">
@@ -343,7 +360,7 @@
   </div>
 </div>
 
-<!-- МОДАЛКА: Редактор вопроса -->
+<!-- ============ МОДАЛКА: Редактор вопроса ============ -->
 <div id="modal-edit-question" class="modal" style="display:none;">
   <div class="modal-box">
     <div class="modal-header">
@@ -405,7 +422,7 @@
   </div>
 </div>
 
-<!-- МОДАЛКА: Заметка теории -->
+<!-- ============ МОДАЛКА: Заметка теории ============ -->
 <div id="modal-theory-note" class="modal" style="display:none;">
   <div class="modal-box modal-box-large">
     <div class="modal-header">
@@ -431,7 +448,7 @@
   </div>
 </div>
 
-<!-- МОДАЛКА: Ссылка теории -->
+<!-- ============ МОДАЛКА: Ссылка теории ============ -->
 <div id="modal-theory-link" class="modal" style="display:none;">
   <div class="modal-box">
     <div class="modal-header">
@@ -455,7 +472,7 @@
   </div>
 </div>
 
-<!-- МОДАЛКА: Выбор материала -->
+<!-- ============ МОДАЛКА: Выбор материала ============ -->
 <div id="modal-pick-material" class="modal" style="display:none;">
   <div class="modal-box">
     <div class="modal-header">
@@ -471,7 +488,7 @@
   </div>
 </div>
 
-<!-- МОДАЛКА: Выбор класса -->
+<!-- ============ МОДАЛКА: Выбор класса ============ -->
 <div id="modal-pick-class" class="modal" style="display:none;">
   <div class="modal-box">
     <div class="modal-header">
@@ -487,7 +504,7 @@
   </div>
 </div>
 
-<!-- МОДАЛКА: Создать класс -->
+<!-- ============ МОДАЛКА: Создать класс ============ -->
 <div id="modal-create-class" class="modal" style="display:none;">
   <div class="modal-box">
     <div class="modal-header">
@@ -511,7 +528,7 @@
   </div>
 </div>
 
-<!-- МОДАЛКА: Редактор класса -->
+<!-- ============ МОДАЛКА: Редактор класса ============ -->
 <div id="modal-edit-class" class="modal modal-wide" style="display:none;">
   <div class="modal-box modal-box-large">
     <div class="modal-header">
@@ -548,7 +565,7 @@
   </div>
 </div>
 
-<!-- МОДАЛКА: Добавить учеников -->
+<!-- ============ МОДАЛКА: Добавить учеников ============ -->
 <div id="modal-add-students" class="modal" style="display:none;">
   <div class="modal-box">
     <div class="modal-header">
@@ -570,6 +587,200 @@
     <div class="modal-footer">
       <button class="btn btn-stop" onclick="closeAddStudents()">Отмена</button>
       <button class="btn btn-primary" onclick="confirmAddStudents()">➕ Добавить</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ МОДАЛКА: Настройка CloudPub ============ -->
+<div id="modal-cloudpub-setup" class="modal" style="display:none;">
+  <div class="modal-box modal-box-large">
+    <div class="modal-header">
+      <h2>🚀 Настройка CloudPub</h2>
+      <button class="modal-close" onclick="closeCloudpubModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="sub" style="margin: 0 0 16px; line-height: 1.5; font-size: 14px;">
+        Чтобы ученики могли подключаться <b>через интернет</b> (а не только в вашей сети), нужен аккаунт <b>CloudPub</b> — это бесплатный сервис для публикации локальных приложений.
+      </p>
+
+      <div style="background: rgba(123, 60, 255, 0.08); border-left: 3px solid #7b3cff; padding: 14px 18px; border-radius: 10px; margin-bottom: 16px;">
+        <div style="font-size: 13px; font-weight: 700; color: #b19dff; margin-bottom: 8px;">📖 Как зарегистрироваться (3 минуты):</div>
+        <ol style="margin: 0; padding-left: 20px; font-size: 13px; line-height: 1.8; color: #cfd3e3;">
+          <li>Откройте <a onclick="window.api.openExternal('https://cloudpub.ru')" style="color: #7d9dff; cursor: pointer; text-decoration: underline;">cloudpub.ru</a> в браузере</li>
+          <li>Нажмите <b>«Регистрация»</b> в правом верхнем углу</li>
+          <li>Введите <b>email</b> и придумайте <b>пароль</b></li>
+          <li>Подтвердите email (письмо придёт на почту)</li>
+          <li>Вернитесь сюда и введите те же email и пароль ниже</li>
+        </ol>
+      </div>
+
+      <p class="sub" style="margin: 0 0 16px; font-size: 13px; color: #f5c06b;">
+        ⚠️ Если вы используете Lumen только <b>в классе</b> (все ученики в одной Wi-Fi с вами), можно нажать «Пропустить» — CloudPub не обязателен.
+      </p>
+
+      <label class="modal-field">
+        <span>Email</span>
+        <input type="email" id="cloudpub-email" placeholder="your@email.com" autocomplete="off">
+      </label>
+      <label class="modal-field">
+        <span>Пароль</span>
+        <input type="password" id="cloudpub-password" placeholder="Ваш пароль CloudPub" autocomplete="off">
+      </label>
+      <p id="cloudpub-status" class="sub" style="margin: 8px 0 0; min-height: 20px; font-size: 13px;"></p>
+    </div>
+    <div class="modal-footer" style="justify-content: space-between;">
+      <button class="btn btn-stop" onclick="skipCloudpubSetup()">Пропустить (только класс)</button>
+      <div style="display: flex; gap: 10px;">
+        <button class="btn btn-stop" onclick="closeCloudpubModal()">Отмена</button>
+        <button class="btn btn-primary" onclick="doCloudpubLogin()" id="cloudpub-login-btn">Войти</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ МОДАЛКА: Управление CloudPub ============ -->
+<div id="modal-cloudpub-manage" class="modal" style="display:none;">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h2>🚀 CloudPub</h2>
+      <button class="modal-close" onclick="closeCloudpubManage()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p id="cloudpub-manage-status" class="sub" style="margin: 0 0 16px; min-height: 40px; line-height: 1.5;">
+        Проверка статуса…
+      </p>
+      <p id="cloudpub-manage-link" class="link-url" style="margin: 0 0 16px; display: none;"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-stop" onclick="doCloudpubLogout()" id="cloudpub-logout-btn" style="display:none;">🚪 Выйти из CloudPub</button>
+      <button class="btn btn-primary" onclick="closeCloudpubManage()">Закрыть</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ МОДАЛКА: Инструкция для учителя ============ -->
+<div id="modal-help" class="modal modal-wide" style="display:none;">
+  <div class="modal-box modal-box-large">
+    <div class="modal-header">
+      <h2>📖 Lumen — инструкция для учителя</h2>
+      <button class="modal-close" onclick="closeHelp()">✕</button>
+    </div>
+    <div class="modal-body" style="padding: 24px 32px; line-height: 1.7; font-size: 14px;">
+
+      <div class="help-toc">
+        <div class="help-toc-title">Содержание:</div>
+        <a onclick="scrollHelpTo('help-quickstart')">🚀 Быстрый старт</a>
+        <a onclick="scrollHelpTo('help-cloudpub')">📖 Регистрация в CloudPub</a>
+        <a onclick="scrollHelpTo('help-lesson')">🎓 Как провести урок</a>
+        <a onclick="scrollHelpTo('help-problems')">🔧 Решение проблем</a>
+      </div>
+
+      <div id="help-quickstart" class="help-section">
+        <h3>🚀 Быстрый старт</h3>
+        <ol>
+          <li>Установите Lumen (двойной клик по <b>Lumen Setup 1.0.0.exe</b>)</li>
+          <li>Запустите приложение с рабочего стола</li>
+          <li>При первом запуске введите email и пароль CloudPub</li>
+          <li>Готово! Можно проводить урок</li>
+        </ol>
+      </div>
+
+      <div id="help-cloudpub" class="help-section">
+        <h3>📖 Регистрация в CloudPub</h3>
+        <p><b>Зачем нужен CloudPub:</b> чтобы ученики могли подключаться к вашему уроку <b>через интернет</b> (с домашнего компьютера, телефона из любой сети), а не только из класса.</p>
+        <p><b>Если работаете только в классе</b> (все ученики в одной Wi-Fi с вами) — CloudPub не обязателен. Нажмите «Пропустить».</p>
+
+        <h4>Пошагово:</h4>
+        <ol>
+          <li>Откройте в браузере <a onclick="window.api.openExternal('https://cloudpub.ru')" style="color: #7d9dff; cursor: pointer; text-decoration: underline;">cloudpub.ru</a></li>
+          <li>Нажмите <b>«Регистрация»</b> в правом верхнем углу</li>
+          <li>Введите <b>email</b> и придумайте <b>пароль</b> (минимум 8 символов)</li>
+          <li>Согласитесь с условиями и нажмите <b>«Зарегистрироваться»</b></li>
+          <li>Проверьте почту — придёт письмо. Нажмите <b>«Подтвердить email»</b> в письме <i>(если письма нет — проверьте папку «Спам»)</i></li>
+          <li>Вернитесь в Lumen</li>
+          <li>В окне «Настройка CloudPub» введите те же email и пароль</li>
+          <li>Нажмите <b>«Войти»</b></li>
+        </ol>
+        <p style="color: #7dffb0;">✅ Если всё правильно — увидите сообщение «Успешно! Можно закрыть окно».</p>
+      </div>
+
+      <div id="help-lesson" class="help-section">
+        <h3>🎓 Как провести урок</h3>
+
+        <h4>Подготовка (за день до урока)</h4>
+        <ol>
+          <li><b>Материалы</b> → <b>➕ Создать материал</b></li>
+          <li>Введите название (например, «Теорема Пифагора, 8А»)</li>
+          <li>Добавьте <b>теорию</b> (заметки, картинки, файлы) — опционально</li>
+          <li>Добавьте <b>вопросы</b> (кнопки / текст / квиз) — что будете задавать классу</li>
+          <li>Сохраните</li>
+        </ol>
+
+        <h4>Создание класса (один раз)</h4>
+        <ol>
+          <li><b>Классы</b> → <b>➕ Создать класс</b></li>
+          <li>Название: «8А»</li>
+          <li><b>➕ Добавить учеников</b> → вставьте список имён (по одному в строке)</li>
+          <li>Сохраните</li>
+        </ol>
+
+        <h4>На уроке</h4>
+        <ol>
+          <li>Откройте <b>🎛️ Урок</b></li>
+          <li>Выберите <b>класс</b> (например, 8А)</li>
+          <li>Выберите <b>материал</b> (например, «Теорема Пифагора»)</li>
+          <li>Нажмите <b>▶️ Запустить приложение</b></li>
+          <li>Через 5-7 секунд появится ссылка — <b>отправьте её ученикам</b> или покажите <b>QR-код</b></li>
+          <li>Нажмите <b>📊 Панель учителя</b> — откроется окно управления</li>
+        </ol>
+
+        <h4>Во время урока</h4>
+        <ul>
+          <li>В панели учителя нажмите на вопрос в списке → <b>▶️ Задать классу</b></li>
+          <li>Ученики видят вопрос и жмут одну из трёх кнопок: <b>✅ Понял / 🤔 Почти / 💥 Потерялся</b></li>
+          <li>Вы видите <b>карту класса</b> — кто загорелся зелёным, кто красным</li>
+          <li>Внизу — <b>подсказки</b>, как переобъяснить материал</li>
+        </ul>
+      </div>
+
+      <div id="help-problems" class="help-section">
+        <h3>🔧 Решение проблем</h3>
+
+        <h4>«Flask не запустился»</h4>
+        <ul>
+          <li>Закройте Lumen, откройте заново</li>
+          <li>Если не помогает — переустановите приложение</li>
+        </ul>
+
+        <h4>Ученики не могут зайти по ссылке</h4>
+        <p><b>Если ученики в классе (в одной Wi-Fi с вами):</b> используйте QR-код или локальный IP.</p>
+        <p><b>Если ученики из дома:</b> проверьте, что CloudPub настроен: <b>Настройки → Управление CloudPub</b> → должно быть «✅ Авторизован». Если «⚠️ Не авторизован» — войдите через CloudPub.</p>
+
+        <h4>Забыли пароль CloudPub</h4>
+        <ol>
+          <li>Откройте <a onclick="window.api.openExternal('https://cloudpub.ru')" style="color: #7d9dff; cursor: pointer; text-decoration: underline;">cloudpub.ru</a></li>
+          <li>Нажмите <b>«Войти»</b> → <b>«Забыли пароль?»</b></li>
+          <li>Введите email — придёт письмо для сброса</li>
+          <li>Создайте новый пароль</li>
+          <li>В Lumen: <b>Настройки → Управление CloudPub → Выйти</b> → войдите с новым паролем</li>
+        </ol>
+
+        <h4>Ученик не может зайти</h4>
+        <ul>
+          <li>Проверьте, что он ввёл <b>Фамилию Имя</b> через пробел (не просто имя)</li>
+          <li>Проверьте код комнаты или ссылку</li>
+          <li>Если он не в классе, а из дома — CloudPub должен быть настроен</li>
+        </ul>
+      </div>
+
+      <div class="help-footer">
+        <div><b>Lumen</b> · Illuminate understanding</div>
+        <div>Real-time formative assessment for teachers · Version 1.0.0</div>
+      </div>
+
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="closeHelp()">Понятно, закрыть</button>
     </div>
   </div>
 </div>

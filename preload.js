@@ -11,6 +11,11 @@ contextBridge.exposeInMainWorld('api', {
   stopCloudpub: () => ipcRenderer.invoke('stop-cloudpub'),
   getCloudpubUrl: () => ipcRenderer.invoke('get-cloudpub-url'),
 
+  // CloudPub авторизация
+  checkCloudpubAuth: () => ipcRenderer.invoke('cloudpub:check'),
+  loginCloudpub: (email, password) => ipcRenderer.invoke('cloudpub:login', email, password),
+  logoutCloudpub: () => ipcRenderer.invoke('cloudpub:logout'),
+
   // Ngrok
   startNgrok: () => ipcRenderer.invoke('start-ngrok'),
   stopNgrok: () => ipcRenderer.invoke('stop-ngrok'),
