@@ -1,6 +1,6 @@
 {
   "name": "lumen",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Lumen — Illuminate understanding. Real-time formative assessment for teachers.",
   "main": "main.js",
   "author": "Андрей",
@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
+    "electron-log": "^5.2.0",
     "electron-updater": "^6.3.9"
   },
   "build": {
@@ -36,7 +37,8 @@
       "bin/**/*",
       "node_modules/better-sqlite3/**/*",
       "node_modules/node-addon-api/**/*",
-      "node_modules/electron-updater/**/*"
+      "node_modules/electron-updater/**/*",
+      "node_modules/electron-log/**/*"
     ],
     "asarUnpack": [
       "node_modules/better-sqlite3/**/*",
@@ -47,10 +49,7 @@
     },
     "win": {
       "target": [
-        {
-          "target": "nsis",
-          "arch": ["x64"]
-        }
+        { "target": "nsis", "arch": ["x64"] }
       ],
       "icon": "build/icon.ico"
     },

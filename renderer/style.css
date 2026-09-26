@@ -19,12 +19,19 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  font-family: "Segoe UI", Tahoma, sans-serif;
+  font-family: "Segoe UI", "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", Tahoma, sans-serif;
   background: var(--bg);
   color: var(--text);
   overflow: hidden;
   user-select: none;
   -webkit-font-smoothing: antialiased;
+}
+input,
+textarea,
+select,
+[contenteditable="true"] {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .app { display: flex; height: 100vh; overflow: hidden; }

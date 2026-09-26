@@ -10,8 +10,6 @@ contextBridge.exposeInMainWorld('api', {
   startCloudpub: () => ipcRenderer.invoke('start-cloudpub'),
   stopCloudpub: () => ipcRenderer.invoke('stop-cloudpub'),
   getCloudpubUrl: () => ipcRenderer.invoke('get-cloudpub-url'),
-
-  // CloudPub авторизаци€
   checkCloudpubAuth: () => ipcRenderer.invoke('cloudpub:check'),
   loginCloudpub: (email, password) => ipcRenderer.invoke('cloudpub:login', email, password),
   logoutCloudpub: () => ipcRenderer.invoke('cloudpub:logout'),
@@ -23,17 +21,18 @@ contextBridge.exposeInMainWorld('api', {
   // ”тилиты
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
   openTeacher: () => ipcRenderer.invoke('open-teacher'),
+  closeTeacher: () => ipcRenderer.invoke('close-teacher'),
   isTeacherOpen: () => ipcRenderer.invoke('is-teacher-open'),
 
-  // јвтообновлени€
+  // ќбновлени€ и логи
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  openLogsFolder: () => ipcRenderer.invoke('open-logs-folder'),
+  openLogFile: () => ipcRenderer.invoke('open-log-file'),
 
-  // ”рок Ч материал
+  // ”рок
   setLessonMaterial: (id) => ipcRenderer.invoke('set-lesson-material', id),
   getLessonMaterial: () => ipcRenderer.invoke('get-lesson-material'),
-
-  // ”рок Ч класс
   setLessonClass: (id) => ipcRenderer.invoke('set-lesson-class', id),
   getLessonClass: () => ipcRenderer.invoke('get-lesson-class'),
 

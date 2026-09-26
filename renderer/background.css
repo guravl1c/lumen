@@ -1,0 +1,154 @@
+/* ============================================
+   Lumen — фон: mesh + particles
+   Фон ИЗОЛИРОВАН от hit-testing — не может
+   перехватить клики даже при багах Chromium.
+   ============================================ */
+
+html {
+  background: #0a0d1a;
+}
+
+body {
+  background: #0f1220;
+  min-height: 100vh;
+  overflow-x: hidden;
+  position: relative;
+  isolation: isolate;   /* ← создаёт stacking context — фон не уйдёт за body */
+}
+
+/* ============================================
+   Слой 1: mesh-пятна
+   ============================================ */
+.bg-mesh {
+  position: fixed;
+  inset: 0;
+  z-index: -1;                    /* ← под контентом, но внутри body */
+  pointer-events: none;
+  overflow: hidden;
+  contain: strict;                /* ← изолирует слой от hit-testing */
+  isolation: isolate;             /* ← отдельный stacking context */
+  will-change: transform;         /* ← GPU-слой заранее */
+}
+
+.bg-mesh .blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.5;
+  animation: lumen-float 16s ease-in-out infinite;
+  pointer-events: none;           /* ← на всякий случай */
+  will-change: transform;
+  transform: translate3d(0, 0, 0); /* ← заставляет GPU-слой */
+}
+
+.blob-1 {
+  width: 500px; height: 500px;
+  background: #7c5cff;
+  top: -100px; left: -100px;
+}
+.blob-2 {
+  width: 600px; height: 600px;
+  background: #4a7dff;
+  bottom: -150px; right: -150px;
+  animation-delay: -5s;
+}
+.blob-3 {
+  width: 450px; height: 450px;
+  background: #5c4aff;
+  top: 40%; left: 40%;
+  animation-delay: -10s;
+}
+
+@keyframes lumen-float {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  25%      { transform: translate3d(80px, -60px, 0) scale(1.15); }
+  50%      { transform: translate3d(-60px, 80px, 0) scale(0.9); }
+  75%      { transform: translate3d(60px, 60px, 0) scale(1.1); }
+}
+
+/* ============================================
+   Слой 2: частицы
+   ============================================ */
+.bg-particles {
+  position: fixed;
+  inset: 0;
+  z-index: -1;                    /* ← тот же уровень, что и mesh */
+  pointer-events: none;
+  overflow: hidden;
+  contain: strict;
+  isolation: isolate;
+  will-change: transform;
+}
+
+.particle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: rgba(190, 175, 255, 0.6);
+  border-radius: 50%;
+  box-shadow: 0 0 6px rgba(190, 175, 255, 0.8);
+  animation: lumen-drift linear infinite;
+  pointer-events: none;               /* ← на КАЖДОЙ частице */
+  will-change: transform, opacity;     /* ← GPU-слой заранее */
+  transform: translate3d(0, 0, 0);     /* ← заставляет GPU-слой */
+}
+
+.particle:nth-child(1)  { left: 5%;  top: 10%; animation-duration: 25s; }
+.particle:nth-child(2)  { left: 15%; top: 40%; animation-duration: 30s; animation-delay: -5s; }
+.particle:nth-child(3)  { left: 25%; top: 70%; animation-duration: 22s; animation-delay: -10s; }
+.particle:nth-child(4)  { left: 35%; top: 20%; animation-duration: 28s; animation-delay: -15s; }
+.particle:nth-child(5)  { left: 45%; top: 60%; animation-duration: 35s; animation-delay: -3s; }
+.particle:nth-child(6)  { left: 55%; top: 80%; animation-duration: 26s; animation-delay: -8s; }
+.particle:nth-child(7)  { left: 65%; top: 30%; animation-duration: 32s; animation-delay: -12s; }
+.particle:nth-child(8)  { left: 75%; top: 55%; animation-duration: 24s; animation-delay: -18s; }
+.particle:nth-child(9)  { left: 85%; top: 15%; animation-duration: 29s; animation-delay: -6s; }
+.particle:nth-child(10) { left: 95%; top: 45%; animation-duration: 33s; animation-delay: -22s; }
+.particle:nth-child(11) { left: 10%; top: 85%; animation-duration: 27s; animation-delay: -9s; }
+.particle:nth-child(12) { left: 30%; top: 5%;  animation-duration: 31s; animation-delay: -14s; }
+.particle:nth-child(13) { left: 50%; top: 90%; animation-duration: 23s; animation-delay: -2s; }
+.particle:nth-child(14) { left: 70%; top: 75%; animation-duration: 34s; animation-delay: -19s; }
+.particle:nth-child(15) { left: 90%; top: 95%; animation-duration: 21s; animation-delay: -11s; }
+
+@keyframes lumen-drift {
+  0%   { transform: translate3d(0, 0, 0); opacity: 0.3; }
+  50%  { transform: translate3d(40px, -60px, 0); opacity: 0.8; }
+  100% { transform: translate3d(0, 0, 0); opacity: 0.3; }
+}
+
+/* ============================================
+   Слой 3: контент — выше фона
+   ============================================ */
+.lumen-content,
+.screen,
+.app,
+#root {
+  position: relative;
+  z-index: 10;
+}
+
+/* Модалки — выше всего */
+.modal,
+.modal-backdrop {
+  z-index: 1000;
+}
+
+/* ============================================
+   Бейдж версии
+   ============================================ */
+.version-badge {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  z-index: 9000;
+  padding: 6px 12px;
+  background: rgba(15, 18, 32, 0.7);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 20px;
+  font-size: 11px;
+  color: #9aa0b4;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  user-select: none;
+  pointer-events: none;
+}

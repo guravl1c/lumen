@@ -3,8 +3,21 @@ const path = require('path');
 const fs = require('fs');
 const { spawn, execSync } = require('child_process');
 const http = require('http');
+const log = require('electron-log');
 const { autoUpdater } = require('electron-updater');
 const db = require('./src/database');
+
+// ============================================
+// ЛОГИРОВАНИЕ
+// ============================================
+log.transports.file.level = 'info';
+log.transports.console.level = 'info';
+autoUpdater.logger = log;
+autoUpdater.logger.transports.file.level = 'info';
+
+log.info('=== Lumen запущен ===');
+log.info('Версия:', app.getVersion());
+log.info('Путь к логам:', log.transports.file.getFile().path);
 
 // ============================================
 // ПУТИ
@@ -17,10 +30,10 @@ const APP_EXE = path.join(BIN_DIR, 'app.exe');
 const CLO_PATH = path.join(BIN_DIR, 'clo.exe');
 const NGROK_PATH = path.join(BIN_DIR, 'ngrok.exe');
 
-console.log('[Пути] BIN_DIR =', BIN_DIR);
-console.log('[Пути] APP_EXE =', APP_EXE, fs.existsSync(APP_EXE) ? '✓' : '✗');
-console.log('[Пути] CLO_PATH =', CLO_PATH, fs.existsSync(CLO_PATH) ? '✓' : '✗');
-console.log('[Пути] NGROK_PATH =', NGROK_PATH, fs.existsSync(NGROK_PATH) ? '✓' : '✗');
+log.info('[Пути] BIN_DIR =', BIN_DIR);
+log.info('[Пути] APP_EXE =', APP_EXE, fs.existsSync(APP_EXE) ? '✓' : '✗');
+log.info('[Пути] CLO_PATH =', CLO_PATH, fs.existsSync(CLO_PATH) ? '✓' : '✗');
+log.info('[Пути] NGROK_PATH =', NGROK_PATH, fs.existsSync(NGROK_PATH) ? '✓' : '✗');
 
 // ============================================
 // СОСТОЯНИЕ
@@ -33,8 +46,6 @@ let ngrokProcess = null;
 
 let currentLessonMaterial = null;
 let currentLessonClass = null;
-
-// CloudPub URL — определяется динамически из вывода clo.exe
 let currentCloudpubUrl = null;
 
 // ============================================
@@ -64,29 +75,26 @@ function createWindow() {
 // АВТООБНОВЛЕНИЯ
 // ============================================
 function setupAutoUpdater() {
-  // Логирование
-  autoUpdater.on('checking-for-update', () => console.log('[Update] Проверка...'));
-  autoUpdater.on('update-available', (info) => console.log('[Update] Доступно:', info.version));
-  autoUpdater.on('update-not-available', () => console.log('[Update] Нет обновлений'));
-  autoUpdater.on('error', (err) => console.error('[Update] Ошибка:', err));
+  autoUpdater.on('checking-for-update', () => log.info('[Update] Проверка...'));
+  autoUpdater.on('update-available', (info) => log.info('[Update] Доступно:', info.version));
+  autoUpdater.on('update-not-available', () => log.info('[Update] Нет обновлений'));
+  autoUpdater.on('error', (err) => log.error('[Update] Ошибка:', err));
   autoUpdater.on('download-progress', (p) => {
-    console.log(`[Update] Загрузка: ${Math.round(p.percent)}% (${Math.round(p.bytesPerSecond / 1024)} KB/s)`);
+    log.info(`[Update] Загрузка: ${Math.round(p.percent)}%`);
   });
   autoUpdater.on('update-downloaded', (info) => {
-    console.log('[Update] Скачано:', info.version, '. Установится при перезапуске.');
+    log.info('[Update] Скачано:', info.version, '. Установится при перезапуске.');
   });
 
-  // Проверка через 5 секунд после старта
   setTimeout(() => {
     autoUpdater.checkForUpdatesAndNotify().catch((err) => {
-      console.log('[Update] Ошибка проверки:', err.message);
+      log.warn('[Update] Ошибка проверки:', err.message);
     });
   }, 5000);
 
-  // Проверять каждые 2 часа
   setInterval(() => {
     autoUpdater.checkForUpdatesAndNotify().catch((err) => {
-      console.log('[Update] Ошибка проверки:', err.message);
+      log.warn('[Update] Ошибка проверки:', err.message);
     });
   }, 2 * 60 * 60 * 1000);
 }
@@ -110,12 +118,10 @@ function killProcessOnPort5000() {
     for (const pid of pids) {
       try {
         execSync(`taskkill /pid ${pid} /T /F`, { stdio: 'ignore' });
-        console.log(`[Flask] Убил старый процесс на порту 5000: PID ${pid}`);
+        log.info(`[Flask] Убил старый процесс на порту 5000: PID ${pid}`);
       } catch (e) {}
     }
-  } catch (e) {
-    // Порт свободен — всё ок
-  }
+  } catch (e) {}
 }
 
 function killFlaskTree() {
@@ -135,21 +141,19 @@ function killFlaskTree() {
 // ============================================
 function startFlask() {
   killProcessOnPort5000();
-
   if (flaskProcess) return { ok: false, msg: 'Flask уже запущен' };
   if (!fs.existsSync(APP_EXE)) {
-    console.error('[Flask] app.exe не найден:', APP_EXE);
-    return { ok: false, msg: 'app.exe не найден по пути ' + APP_EXE };
+    log.error('[Flask] app.exe не найден:', APP_EXE);
+    return { ok: false, msg: 'app.exe не найден' };
   }
   try {
     flaskProcess = spawn(APP_EXE, [], {
-      cwd: path.dirname(APP_EXE),
-      windowsHide: true
+      cwd: path.dirname(APP_EXE), windowsHide: true
     });
-    flaskProcess.stdout.on('data', (d) => console.log('[Flask]', d.toString().trim()));
-    flaskProcess.stderr.on('data', (d) => console.log('[Flask err]', d.toString().trim()));
+    flaskProcess.stdout.on('data', (d) => log.info('[Flask]', d.toString().trim()));
+    flaskProcess.stderr.on('data', (d) => log.warn('[Flask err]', d.toString().trim()));
     flaskProcess.on('close', (code) => {
-      console.log('[Flask] код', code);
+      log.info('[Flask] код', code);
       flaskProcess = null;
       if (mainWindow) mainWindow.webContents.send('flask-status', { running: false });
     });
@@ -235,19 +239,13 @@ async function sendClassToFlask() {
 }
 
 // ============================================
-// CLOUDPUB — АВТОРИЗАЦИЯ
+// CLOUDPUB
 // ============================================
 function checkCloudpubAuth() {
   return new Promise((resolve) => {
-    if (!fs.existsSync(CLO_PATH)) {
-      return resolve({ logged: false, error: 'clo.exe не найден' });
-    }
-    const proc = spawn(CLO_PATH, ['ls'], {
-      cwd: path.dirname(CLO_PATH),
-      windowsHide: true
-    });
-    let output = '';
-    let errOutput = '';
+    if (!fs.existsSync(CLO_PATH)) return resolve({ logged: false, error: 'clo.exe не найден' });
+    const proc = spawn(CLO_PATH, ['ls'], { cwd: path.dirname(CLO_PATH), windowsHide: true });
+    let output = '', errOutput = '';
     proc.stdout.on('data', (d) => { output += d.toString(); });
     proc.stderr.on('data', (d) => { errOutput += d.toString(); });
     proc.on('close', (code) => {
@@ -265,56 +263,39 @@ function checkCloudpubAuth() {
 
 function loginCloudpub(email, password) {
   return new Promise((resolve) => {
-    if (!fs.existsSync(CLO_PATH)) {
-      return resolve({ ok: false, msg: 'clo.exe не найден' });
-    }
-    if (!email || !password) {
-      return resolve({ ok: false, msg: 'Введите email и пароль' });
-    }
-    console.log('[CloudPub] Логин для', email);
-    const proc = spawn(CLO_PATH, ['login', email, password], {
-      cwd: path.dirname(CLO_PATH),
-      windowsHide: true
-    });
-    let output = '';
-    let errOutput = '';
+    if (!fs.existsSync(CLO_PATH)) return resolve({ ok: false, msg: 'clo.exe не найден' });
+    if (!email || !password) return resolve({ ok: false, msg: 'Введите email и пароль' });
+    log.info('[CloudPub] Логин для', email);
+    const proc = spawn(CLO_PATH, ['login', email, password], { cwd: path.dirname(CLO_PATH), windowsHide: true });
+    let output = '', errOutput = '';
     proc.stdout.on('data', (d) => { output += d.toString(); });
     proc.stderr.on('data', (d) => { errOutput += d.toString(); });
     proc.on('close', (code) => {
       const combined = output + errOutput;
-      console.log('[CloudPub] Ответ:', combined);
+      log.info('[CloudPub] Ответ:', combined);
       const success = code === 0 && !combined.toLowerCase().includes('error') && !combined.toLowerCase().includes('invalid');
-      if (success) {
-        resolve({ ok: true, msg: 'Успешный вход' });
-      } else {
+      if (success) resolve({ ok: true, msg: 'Успешный вход' });
+      else {
         let reason = 'Не удалось войти';
-        if (combined.toLowerCase().includes('invalid credentials') || combined.toLowerCase().includes('wrong password')) {
-          reason = 'Неверный email или пароль';
-        } else if (combined.toLowerCase().includes('email')) {
-          reason = 'Проверьте email';
-        }
+        if (combined.toLowerCase().includes('invalid credentials') || combined.toLowerCase().includes('wrong password')) reason = 'Неверный email или пароль';
+        else if (combined.toLowerCase().includes('email')) reason = 'Проверьте email';
         resolve({ ok: false, msg: reason + ': ' + combined.trim().slice(0, 200) });
       }
     });
     proc.on('error', (err) => resolve({ ok: false, msg: 'Ошибка запуска: ' + err.message }));
-    setTimeout(() => { try { proc.kill(); } catch(e){} resolve({ ok: false, msg: 'Таймаут — сервер не отвечает' }); }, 15000);
+    setTimeout(() => { try { proc.kill(); } catch(e){} resolve({ ok: false, msg: 'Таймаут' }); }, 15000);
   });
 }
 
 function logoutCloudpub() {
   return new Promise((resolve) => {
-    if (!fs.existsSync(CLO_PATH)) {
-      return resolve({ ok: false, msg: 'clo.exe не найден' });
-    }
-    const proc = spawn(CLO_PATH, ['logout'], {
-      cwd: path.dirname(CLO_PATH),
-      windowsHide: true
-    });
+    if (!fs.existsSync(CLO_PATH)) return resolve({ ok: false, msg: 'clo.exe не найден' });
+    const proc = spawn(CLO_PATH, ['logout'], { cwd: path.dirname(CLO_PATH), windowsHide: true });
     let output = '';
     proc.stdout.on('data', (d) => { output += d.toString(); });
     proc.stderr.on('data', (d) => { output += d.toString(); });
     proc.on('close', () => {
-      console.log('[CloudPub] Logout:', output);
+      log.info('[CloudPub] Logout:', output);
       currentCloudpubUrl = null;
       resolve({ ok: true });
     });
@@ -323,66 +304,43 @@ function logoutCloudpub() {
   });
 }
 
-// ============================================
-// CLOUDPUB — ТУННЕЛЬ (динамический URL)
-// ============================================
 function startCloudpub() {
   if (cloudpubProcess) return { ok: false };
   if (!fs.existsSync(CLO_PATH)) {
-    console.error('[CloudPub] clo.exe не найден:', CLO_PATH);
+    log.error('[CloudPub] clo.exe не найден:', CLO_PATH);
     return { ok: false, msg: 'clo.exe не найден' };
   }
   try {
-    cloudpubProcess = spawn(CLO_PATH, ['publish', 'http', '5000'], {
-      cwd: path.dirname(CLO_PATH),
-      windowsHide: true
-    });
-
+    cloudpubProcess = spawn(CLO_PATH, ['publish', 'http', '5000'], { cwd: path.dirname(CLO_PATH), windowsHide: true });
     const handleOutput = (data) => {
       const text = data.toString();
-      console.log('[CloudPub]', text.trim());
-
+      log.info('[CloudPub]', text.trim());
       const match = text.match(/https:\/\/[a-z0-9-]+\.cloudpub\.ru/i);
       if (match) {
         const cleanUrl = match[0].replace(/:\d+$/, '');
         if (cleanUrl !== currentCloudpubUrl) {
           currentCloudpubUrl = cleanUrl;
-          console.log('[CloudPub] Найден URL:', currentCloudpubUrl);
-
-          if (mainWindow) {
-            mainWindow.webContents.send('cloudpub-status', {
-              running: true,
-              url: currentCloudpubUrl
-            });
-          }
-
+          log.info('[CloudPub] Найден URL:', currentCloudpubUrl);
+          if (mainWindow) mainWindow.webContents.send('cloudpub-status', { running: true, url: currentCloudpubUrl });
           postJSON('/api/set-cloudpub-url', { url: currentCloudpubUrl });
         }
       }
     };
-
     cloudpubProcess.stdout.on('data', handleOutput);
     cloudpubProcess.stderr.on('data', handleOutput);
-
     cloudpubProcess.on('close', (code) => {
-      console.log('[CloudPub] код', code);
+      log.info('[CloudPub] код', code);
       cloudpubProcess = null;
       currentCloudpubUrl = null;
       if (mainWindow) mainWindow.webContents.send('cloudpub-status', { running: false });
     });
-
     return { ok: true };
   } catch (e) { return { ok: false }; }
 }
 
 function stopCloudpub() {
   if (!cloudpubProcess) return { ok: false };
-  try {
-    cloudpubProcess.kill();
-    cloudpubProcess = null;
-    currentCloudpubUrl = null;
-    return { ok: true };
-  }
+  try { cloudpubProcess.kill(); cloudpubProcess = null; currentCloudpubUrl = null; return { ok: true }; }
   catch (e) { return { ok: false }; }
 }
 
@@ -391,22 +349,18 @@ function stopCloudpub() {
 // ============================================
 function startNgrok() {
   if (ngrokProcess) return { ok: false };
-  if (!fs.existsSync(NGROK_PATH)) {
-    console.error('[Ngrok] ngrok.exe не найден:', NGROK_PATH);
-    return { ok: false };
-  }
+  if (!fs.existsSync(NGROK_PATH)) return { ok: false };
   try {
     ngrokProcess = spawn(NGROK_PATH, ['http', '5000'], { windowsHide: true });
-    ngrokProcess.stdout.on('data', (d) => console.log('[Ngrok]', d.toString().trim()));
-    ngrokProcess.stderr.on('data', (d) => console.log('[Ngrok err]', d.toString().trim()));
+    ngrokProcess.stdout.on('data', (d) => log.info('[Ngrok]', d.toString().trim()));
+    ngrokProcess.stderr.on('data', (d) => log.info('[Ngrok err]', d.toString().trim()));
     ngrokProcess.on('close', () => { ngrokProcess = null; });
     return { ok: true };
   } catch (e) { return { ok: false }; }
 }
 function stopNgrok() {
   if (!ngrokProcess) return { ok: false };
-  try { ngrokProcess.kill(); ngrokProcess = null; return { ok: true }; }
-  catch (e) { return { ok: false }; }
+  try { ngrokProcess.kill(); ngrokProcess = null; return { ok: true }; } catch (e) { return { ok: false }; }
 }
 
 // ============================================
@@ -430,7 +384,7 @@ ipcMain.handle('get-cloudpub-url', () => currentCloudpubUrl || '');
 ipcMain.handle('open-external', (e, url) => shell.openExternal(url));
 
 // ============================================
-// IPC — АВТООБНОВЛЕНИЯ
+// IPC — ОБНОВЛЕНИЯ И ЛОГИ
 // ============================================
 ipcMain.handle('check-for-updates', async () => {
   try {
@@ -440,8 +394,17 @@ ipcMain.handle('check-for-updates', async () => {
     return { ok: false, msg: e.message };
   }
 });
-
 ipcMain.handle('get-app-version', () => app.getVersion());
+ipcMain.handle('open-logs-folder', () => {
+  const logPath = path.dirname(log.transports.file.getFile().path);
+  shell.openPath(logPath);
+  return { ok: true, path: logPath };
+});
+ipcMain.handle('open-log-file', () => {
+  const logFile = log.transports.file.getFile().path;
+  shell.openPath(logFile);
+  return { ok: true, path: logFile };
+});
 
 // ============================================
 // IPC — МАТЕРИАЛ УРОКА
@@ -492,7 +455,7 @@ ipcMain.handle('set-lesson-class', async (e, classId) => {
 ipcMain.handle('get-lesson-class', () => currentLessonClass);
 
 // ============================================
-// IPC — КЛАССЫ
+// IPC — КЛАССЫ, УЧЕНИКИ
 // ============================================
 ipcMain.handle('classes:list', () => db.listClasses());
 ipcMain.handle('classes:get', (e, id) => db.getClass(id));
@@ -513,17 +476,82 @@ ipcMain.handle('materials:create', (e, data) => db.createMaterial(data));
 ipcMain.handle('materials:update', (e, id, data) => db.updateMaterial(id, data));
 ipcMain.handle('materials:delete', (e, id) => db.deleteMaterial(id));
 ipcMain.handle('materials:toggleFavorite', (e, id) => db.toggleFavorite(id));
-ipcMain.handle('questions:create', (e, materialId, data) => db.createQuestion(materialId, data));
-ipcMain.handle('questions:update', (e, id, data) => db.updateQuestion(id, data));
+
+// ============================================
+// IPC — ВОПРОСЫ (с правильными полями)
+// ============================================
+ipcMain.handle('questions:create', (e, materialId, data) => {
+  // Приводим данные к формату database.js
+  const prepared = {
+    text: data.text || '',
+    mode: data.mode || 'buttons',
+    timer: data.timer || 0,
+    keywords: Array.isArray(data.keywords) ? data.keywords.join(', ') : (data.keywords || ''),
+    quiz_options: data.quiz_options || [],
+    quiz_correct: data.quiz_correct ?? null,
+  };
+  return db.createQuestion(materialId, prepared);
+});
+ipcMain.handle('questions:update', (e, id, data) => {
+  const prepared = {
+    text: data.text,
+    mode: data.mode,
+    timer: data.timer,
+    keywords: Array.isArray(data.keywords) ? data.keywords.join(', ') : data.keywords,
+    quiz_options: data.quiz_options,
+    quiz_correct: data.quiz_correct,
+  };
+  return db.updateQuestion(id, prepared);
+});
 ipcMain.handle('questions:delete', (e, id) => db.deleteQuestion(id));
 
 // ============================================
-// IPC — ТЕОРИЯ
+// IPC — ТЕОРИЯ (правильные поля для database.js)
 // ============================================
 ipcMain.handle('theory:list', (e, materialId) => db.listTheory(materialId));
-ipcMain.handle('theory:createNote', (e, materialId, data) => db.createTheoryNote(materialId, data));
-ipcMain.handle('theory:createLink', (e, materialId, data) => db.createTheoryLink(materialId, data));
-ipcMain.handle('theory:createFile', (e, materialId, data) => db.createTheoryFile(materialId, data));
+
+ipcMain.handle('theory:createNote', (e, materialId, data) => {
+  return db.createTheoryNote(materialId, {
+    title: data.title || 'Заметка',
+    content: data.content || '',
+  });
+});
+
+ipcMain.handle('theory:createLink', (e, materialId, data) => {
+  return db.createTheoryLink(materialId, {
+    title: data.title || 'Ссылка',
+    content: data.url || data.content || '',
+  });
+});
+
+ipcMain.handle('theory:createFile', async (e, materialId, data) => {
+  try {
+    if (!data || !data.filePath) {
+      return { ok: false, msg: 'Нет данных файла' };
+    }
+    if (!fs.existsSync(data.filePath)) {
+      return { ok: false, msg: 'Файл не найден: ' + data.filePath };
+    }
+
+    // Передаём в database.js правильные поля:
+    // sourcePath — путь к исходнику (он сам скопирует)
+    // original_name — имя файла
+    // type — 'image' или 'file'
+    const result = db.createTheoryFile(materialId, {
+      sourcePath: data.filePath,
+      original_name: data.fileName || path.basename(data.filePath),
+      title: data.title || data.fileName || path.basename(data.filePath),
+      type: data.fileType || 'file',
+    });
+
+    log.info('[Theory] Сохранено:', JSON.stringify(result));
+    return result || { ok: false, msg: 'Не удалось сохранить' };
+  } catch (err) {
+    log.error('[Theory] Ошибка:', err);
+    return { ok: false, msg: err.message };
+  }
+});
+
 ipcMain.handle('theory:update', (e, id, data) => db.updateTheory(id, data));
 ipcMain.handle('theory:delete', (e, id) => db.deleteTheory(id));
 ipcMain.handle('theory:openFile', (e, id) => {
@@ -536,10 +564,7 @@ ipcMain.handle('theory:pickFile', async (e, fileType) => {
   const filters = fileType === 'image'
     ? [{ name: 'Картинки', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'] }]
     : [{ name: 'Документы', extensions: ['pdf', 'docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls', 'txt', 'zip'] }];
-  const result = await dialog.showOpenDialog(mainWindow, {
-    properties: ['openFile'],
-    filters
-  });
+  const result = await dialog.showOpenDialog(mainWindow, { properties: ['openFile'], filters });
   if (result.canceled || !result.filePaths.length) return { ok: false };
   const filePath = result.filePaths[0];
   const fileName = path.basename(filePath);
@@ -552,18 +577,14 @@ ipcMain.handle('theory:readFileBase64', (e, id) => {
   try {
     const data = fs.readFileSync(info.path);
     const ext = path.extname(info.path).toLowerCase().replace('.', '');
-    const mimeTypes = {
-      png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
-      gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml',
-      pdf: 'application/pdf'
-    };
+    const mimeTypes = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', pdf: 'application/pdf' };
     const mime = mimeTypes[ext] || 'application/octet-stream';
     return `data:${mime};base64,${data.toString('base64')}`;
   } catch (e) { return null; }
 });
 
 // ============================================
-// IPC — УРОКИ
+// IPC — УРОКИ, НАСТРОЙКИ
 // ============================================
 ipcMain.handle('lessons:list', (e, limit) => db.listLessons(limit || 50));
 ipcMain.handle('lessons:get', (e, id) => db.getLesson(id));
@@ -571,10 +592,6 @@ ipcMain.handle('lessons:create', (e, data) => db.createLesson(data));
 ipcMain.handle('lessons:finish', (e, id, stats) => db.finishLesson(id, stats));
 ipcMain.handle('lessons:delete', (e, id) => db.deleteLesson(id));
 ipcMain.handle('answers:save', (e, data) => db.saveAnswer(data));
-
-// ============================================
-// IPC — НАСТРОЙКИ
-// ============================================
 ipcMain.handle('settings:get', (e, key, def) => db.getSetting(key, def));
 ipcMain.handle('settings:set', (e, key, value) => db.setSetting(key, value));
 ipcMain.handle('settings:all', () => db.getAllSettings());
@@ -599,8 +616,13 @@ ipcMain.handle('open-teacher', () => {
   teacherWindow.on('closed', () => { teacherWindow = null; });
   return { ok: true };
 });
-ipcMain.handle('is-teacher-open', () => {
-  return teacherWindow && !teacherWindow.isDestroyed();
+ipcMain.handle('is-teacher-open', () => teacherWindow && !teacherWindow.isDestroyed());
+ipcMain.handle('close-teacher', () => {
+  if (teacherWindow && !teacherWindow.isDestroyed()) {
+    teacherWindow.close();
+    return { ok: true };
+  }
+  return { ok: false };
 });
 
 // ============================================
@@ -609,7 +631,6 @@ ipcMain.handle('is-teacher-open', () => {
 app.whenReady().then(() => {
   createWindow();
   setupAutoUpdater();
-
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

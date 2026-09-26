@@ -3,9 +3,26 @@
 <head>
 <meta charset="utf-8">
 <title>Lumen</title>
+<link rel="stylesheet" href="background.css">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+
+<!-- ====== ФОН ====== -->
+<div class="bg-mesh">
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+  <div class="blob blob-3"></div>
+</div>
+<div class="bg-particles">
+  <div class="particle"></div><div class="particle"></div><div class="particle"></div>
+  <div class="particle"></div><div class="particle"></div><div class="particle"></div>
+  <div class="particle"></div><div class="particle"></div><div class="particle"></div>
+  <div class="particle"></div><div class="particle"></div><div class="particle"></div>
+  <div class="particle"></div><div class="particle"></div><div class="particle"></div>
+</div>
+<!-- ====== /ФОН ====== -->
+
 <div class="app">
 
   <aside class="sidebar">
@@ -214,6 +231,23 @@
       </div>
 
       <div class="settings-section">
+        <h3>🔄 Обновления</h3>
+        <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+          <button class="btn btn-primary" onclick="checkUpdatesManual()">Проверить обновления</button>
+          <span class="sub" style="font-size: 13px;">Версия: <b id="about-version">—</b></span>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>📋 Логи</h3>
+        <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+          <button class="btn btn-primary" onclick="openLogsFolder()">Открыть папку логов</button>
+          <button class="btn btn-primary" onclick="openLogFile()">Открыть файл лога</button>
+          <span class="sub" style="font-size: 13px;">Если что-то не работает — покажите лог разработчику</span>
+        </div>
+      </div>
+
+      <div class="settings-section">
         <h3>📖 Помощь</h3>
         <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
           <button class="btn btn-primary" onclick="openHelp()">Открыть инструкцию</button>
@@ -230,11 +264,11 @@
       </div>
 
       <div class="settings-section">
-        <h3>ℹ️ About</h3>
+        <h3>ℹ️ О приложении</h3>
         <div class="about-info">
           <div><b>Lumen</b></div>
           <div>Illuminate understanding</div>
-          <div>Version 1.0.0 · Electron</div>
+          <div>Version <span id="about-version-2">1.1.0</span> · Electron</div>
           <div style="margin-top:8px; color: #8a92b0;">Real-time formative assessment for teachers</div>
         </div>
       </div>
@@ -678,7 +712,7 @@
       <div id="help-quickstart" class="help-section">
         <h3>🚀 Быстрый старт</h3>
         <ol>
-          <li>Установите Lumen (двойной клик по <b>Lumen Setup 1.0.0.exe</b>)</li>
+          <li>Установите Lumen (двойной клик по <b>Lumen Setup 1.1.0.exe</b>)</li>
           <li>Запустите приложение с рабочего стола</li>
           <li>При первом запуске введите email и пароль CloudPub</li>
           <li>Готово! Можно проводить урок</li>
@@ -775,7 +809,7 @@
 
       <div class="help-footer">
         <div><b>Lumen</b> · Illuminate understanding</div>
-        <div>Real-time formative assessment for teachers · Version 1.0.0</div>
+        <div>Real-time formative assessment for teachers · Version 1.1.0</div>
       </div>
 
     </div>
@@ -784,6 +818,23 @@
     </div>
   </div>
 </div>
+
+<!-- ====== БЕЙДЖ ВЕРСИИ ====== -->
+<div class="version-badge" id="app-version">Lumen</div>
+<script>
+  (async () => {
+    if (window.api && window.api.getAppVersion) {
+      try {
+        const v = await window.api.getAppVersion();
+        document.getElementById('app-version').textContent = `Lumen v${v}`;
+        const a1 = document.getElementById('about-version');
+        const a2 = document.getElementById('about-version-2');
+        if (a1) a1.textContent = v;
+        if (a2) a2.textContent = v;
+      } catch (e) {}
+    }
+  })();
+</script>
 
 <script src="app.js"></script>
 </body>

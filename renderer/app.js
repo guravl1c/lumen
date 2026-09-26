@@ -1,263 +1,963 @@
 // ============================================
-// СОСТОЯНИЕ
+// LUMEN — Electron Renderer
 // ============================================
-let cloudpubUrl = '';
-let flaskRunning = false;
-let currentView = 'lesson';
-let currentMaterialId = null;
-let currentMaterial = null;
-let currentQuestionId = null;
-let currentQMode = 'buttons';
-let currentMaterialTab = 'theory';
-let currentTheoryEditId = null;
-let currentTheoryEditType = null;
-let currentClassId = null;
-let currentClass = null;
-let lessonMaterial = null;
-let lessonClass = null;
 
 // ============================================
-// ПЕРЕКЛЮЧЕНИЕ ВКЛАДОК
+// СОСТОЯНИЕ
+// ============================================
+let currentLessonClass = null;
+let currentLessonMaterial = null;
+let flaskRunning = false;
+let cloudpubRunning = false;
+let cloudpubUrl = '';
+let currentView = 'lesson';
+let currentMaterialTab = 'theory';
+let currentMaterialForEdit = null;
+let currentQuestions = [];
+let editingQuestionId = null;
+let editingQMode = 'buttons';
+let currentClassForEdit = null;
+let currentStudents = [];
+
+// ============================================
+// ИНИЦИАЛИЗАЦИЯ
+// ============================================
+document.addEventListener('DOMContentLoaded', async () => {
+  console.log('[Lumen] renderer loaded');
+
+  // Версия в бейдже и в About
+  await updateAppVersion();
+
+  // Проверить статус Flask
+  const flask = await window.api.checkFlask();
+  setFlaskStatus(flask.running);
+
+  // Проверить CloudPub
+  const cp = await window.api.checkCloudpubAuth();
+  if (!cp.logged) {
+    setTimeout(() => openCloudpubModal(), 1000);
+  }
+
+  // Загрузить материалы и классы
+  await refreshMaterials();
+  await refreshClasses();
+
+  // Слушатели событий
+  window.api.onFlaskStatus((data) => {
+    setFlaskStatus(data.running);
+  });
+  window.api.onCloudpubStatus((data) => {
+    cloudpubRunning = data.running;
+    if (data.url) {
+      cloudpubUrl = data.url;
+      updateLinkBox();
+    }
+  });
+});
+
+// ============================================
+// ВЕРСИЯ ПРИЛОЖЕНИЯ
+// ============================================
+async function updateAppVersion() {
+  try {
+    const version = await window.api.getAppVersion();
+    const badge = document.getElementById('app-version');
+    const about = document.getElementById('about-version');
+    const about2 = document.getElementById('about-version-2');
+    if (badge) badge.textContent = `Lumen v${version}`;
+    if (about) about.textContent = version;
+    if (about2) about2.textContent = version;
+  } catch (e) {
+    console.error('Не удалось получить версию', e);
+  }
+}
+
+// ============================================
+// ОБНОВЛЕНИЯ
+// ============================================
+async function checkUpdatesManual() {
+  try {
+    const btn = event?.target;
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = '⏳ Проверка…';
+    }
+
+    const result = await window.api.checkForUpdates();
+
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Проверить обновления';
+    }
+
+    if (result.ok) {
+      const current = await window.api.getAppVersion();
+      if (result.version && result.version !== current) {
+        alert(`✅ Доступна новая версия: ${result.version}\n\nОна скачается в фоне и установится при следующем запуске.`);
+      } else {
+        alert(`✅ У вас последняя версия: ${current}`);
+      }
+    } else {
+      alert('❌ Не удалось проверить обновления:\n' + (result.msg || 'неизвестная ошибка'));
+    }
+  } catch (e) {
+    alert('❌ Ошибка: ' + e.message);
+  }
+}
+
+// ============================================
+// ЛОГИ
+// ============================================
+async function openLogsFolder() {
+  try {
+    const result = await window.api.openLogsFolder();
+    if (!result.ok) {
+      alert('Не удалось открыть папку логов');
+    }
+  } catch (e) {
+    alert('Ошибка: ' + e.message);
+  }
+}
+
+async function openLogFile() {
+  try {
+    const result = await window.api.openLogFile();
+    if (!result.ok) {
+      alert('Не удалось открыть файл лога');
+    }
+  } catch (e) {
+    alert('Ошибка: ' + e.message);
+  }
+}
+
+// ============================================
+// НАВИГАЦИЯ
 // ============================================
 function switchView(view) {
   currentView = view;
-  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  const el = document.getElementById('view-' + view);
-  const btn = document.querySelector(`.nav-item[data-view="${view}"]`);
-  if (el) el.classList.add('active');
-  if (btn) btn.classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.classList.toggle('active', item.dataset.view === view);
+  });
+  document.querySelectorAll('.view').forEach(v => {
+    v.classList.toggle('active', v.id === 'view-' + view);
+  });
 
-  if (view === 'materials') renderMaterials();
-  if (view === 'classes') renderClasses();
-  if (view === 'history') renderHistory();
-  if (view === 'settings') loadSettings();
+  if (view === 'materials') refreshMaterials();
+  if (view === 'classes') refreshClasses();
+  if (view === 'history') refreshHistory();
 }
 
 // ============================================
-// УРОК — СТАТУС
+// СТАТУС FLASK
 // ============================================
-function setStatus(title, sub, cls) {
-  const card = document.getElementById('status-card');
-  const t = document.getElementById('status-title');
-  const s = document.getElementById('status-sub');
-  const icon = card.querySelector('.status-icon');
-  card.className = 'status-card' + (cls ? ' ' + cls : '');
-  t.textContent = title;
-  s.textContent = sub;
-  if (cls === 'running') icon.textContent = '✅';
-  else if (cls === 'error') icon.textContent = '❌';
-  else icon.textContent = '⏸️';
+function setFlaskStatus(running) {
+  flaskRunning = running;
   const dot = document.getElementById('status-dot');
-  const txt = document.getElementById('status-text');
-  if (cls === 'running') { dot.classList.add('running'); txt.textContent = 'Работает'; }
-  else if (cls === 'error') { dot.classList.remove('running'); txt.textContent = 'Ошибка'; }
-  else { dot.classList.remove('running'); txt.textContent = 'Остановлено'; }
-}
+  const text = document.getElementById('status-text');
+  const btnStart = document.getElementById('btn-start');
+  const btnStop = document.getElementById('btn-stop');
+  const btnTeacher = document.getElementById('btn-teacher');
+  const statusIcon = document.querySelector('.status-icon');
+  const statusTitle = document.getElementById('status-title');
+  const statusSub = document.getElementById('status-sub');
 
-function setButton(id, disabled) {
-  const el = document.getElementById(id);
-  if (el) el.disabled = disabled;
+  if (dot) dot.classList.toggle('running', running);
+  if (text) text.textContent = running ? 'Запущено' : 'Остановлено';
+  if (btnStart) btnStart.disabled = running;
+  if (btnStop) btnStop.disabled = !running;
+  if (btnTeacher) btnTeacher.disabled = !running;
+
+  if (statusIcon) statusIcon.textContent = running ? '▶️' : '⏸️';
+  if (statusTitle) statusTitle.textContent = running ? 'Приложение запущено' : 'Готово к запуску';
+  if (statusSub) statusSub.textContent = running
+    ? 'Откройте панель учителя или отправьте ссылку ученикам'
+    : 'Нажмите «Запустить приложение»';
+
+  if (running) {
+    updateLinkBox();
+  } else {
+    const lb = document.getElementById('link-box');
+    if (lb) lb.style.display = 'none';
+  }
 }
 
 // ============================================
-// ВЫБОР МАТЕРИАЛА ДЛЯ УРОКА
+// ЗАПУСК / ОСТАНОВКА
 // ============================================
-async function openMaterialPicker() {
-  document.getElementById('pick-search').value = '';
-  document.getElementById('modal-pick-material').style.display = 'flex';
-  await renderPickList();
-}
-function closeMaterialPicker() {
-  document.getElementById('modal-pick-material').style.display = 'none';
-}
-async function renderPickList() {
-  const list = document.getElementById('pick-list');
-  const search = (document.getElementById('pick-search')?.value || '').toLowerCase();
+async function startAll() {
+  const btn = document.getElementById('btn-start');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ Запускаю…';
+  }
+
   try {
-    const materials = await window.api.listMaterials();
-    const filtered = search ? materials.filter(m => (m.title || '').toLowerCase().includes(search)) : materials;
-    if (!filtered.length) {
-      list.innerHTML = '<p class="sub" style="text-align:center;padding:20px;">Материалов пока нет.</p>';
+    const result = await window.api.startFlask();
+    if (!result.ok) {
+      alert('Ошибка запуска Flask: ' + result.msg);
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = '▶️ Запустить приложение';
+      }
       return;
     }
-    list.innerHTML = '';
-    filtered.forEach(m => {
-      const item = document.createElement('div');
-      item.className = 'pick-item';
-      item.onclick = () => pickMaterial(m);
-      item.innerHTML = `
-        <div class="pick-item-icon">📁</div>
-        <div class="pick-item-content">
-          <div class="pick-item-title">${escapeHtml(m.title || 'Без названия')}</div>
-          <div class="pick-item-sub">
-            ${m.question_count || 0} вопросов · ${m.theory_count || 0} теории
-          </div>
-        </div>
-      `;
-      list.appendChild(item);
-    });
-  } catch (e) { list.innerHTML = '<p class="err">Ошибка: ' + e.message + '</p>'; }
-}
-async function pickMaterial(material) {
-  const full = await window.api.getMaterial(material.id);
-  if (!full) return;
-  lessonMaterial = full;
-  await window.api.setLessonMaterial(full.id);
-  closeMaterialPicker();
-  renderLessonMaterial();
-  showToast('Материал выбран: ' + full.title, 'success');
-}
-async function clearLessonMaterial() {
-  lessonMaterial = null;
-  await window.api.setLessonMaterial(null);
-  renderLessonMaterial();
-}
-function renderLessonMaterial() {
-  const empty = document.getElementById('lesson-material-empty');
-  const chosen = document.getElementById('lesson-material-chosen');
-  if (!lessonMaterial) {
-    empty.style.display = 'flex';
-    chosen.style.display = 'none';
-    return;
+
+    await new Promise(r => setTimeout(r, 2000));
+
+    if (currentLessonMaterial) {
+      await window.api.setLessonMaterial(currentLessonMaterial.material_id);
+    }
+    if (currentLessonClass) {
+      await window.api.setLessonClass(currentLessonClass.class_id);
+    }
+
+    await new Promise(r => setTimeout(r, 1000));
+    await window.api.startCloudpub();
+
+    await new Promise(r => setTimeout(r, 3000));
+
+    if (btn) btn.textContent = '▶️ Запустить приложение';
+    setFlaskStatus(true);
+    updateLinkBox();
+  } catch (e) {
+    alert('Ошибка: ' + e.message);
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '▶️ Запустить приложение';
+    }
   }
-  empty.style.display = 'none';
-  chosen.style.display = 'flex';
-  document.getElementById('lesson-material-title').textContent = lessonMaterial.title;
-  const parts = [];
-  parts.push((lessonMaterial.questions?.length || 0) + ' вопросов');
-  if (lessonMaterial.theory?.length) parts.push((lessonMaterial.theory.length) + ' теории');
-  if (lessonMaterial.subject) parts.push(lessonMaterial.subject);
-  document.getElementById('lesson-material-sub').textContent = parts.join(' · ');
+}
+
+async function stopAll() {
+  try {
+    await window.api.stopCloudpub();
+    await window.api.stopFlask();
+    setFlaskStatus(false);
+  } catch (e) {
+    alert('Ошибка остановки: ' + e.message);
+  }
 }
 
 // ============================================
-// ВЫБОР КЛАССА ДЛЯ УРОКА
+// ССЫЛКА ДЛЯ УЧЕНИКОВ
+// ============================================
+function updateLinkBox() {
+  const box = document.getElementById('link-box');
+  const url = document.getElementById('link-url');
+  if (!box || !url) return;
+
+  if (cloudpubUrl) {
+    url.textContent = cloudpubUrl + '/student';
+    box.style.display = 'flex';
+  } else if (flaskRunning) {
+    url.textContent = 'http://localhost:5000/student';
+    box.style.display = 'flex';
+  } else {
+    box.style.display = 'none';
+  }
+}
+
+function copyLink() {
+  const url = document.getElementById('link-url');
+  if (!url) return;
+  navigator.clipboard.writeText(url.textContent).then(() => {
+    alert('Скопировано: ' + url.textContent);
+  }).catch(() => {
+    prompt('Скопируй вручную:', url.textContent);
+  });
+}
+
+function openStudent() {
+  const url = document.getElementById('link-url');
+  if (url) window.api.openExternal(url.textContent);
+}
+
+function openTeacher() {
+  window.api.openTeacher();
+}
+
+// ============================================
+// ВЫБОР КЛАССА И МАТЕРИАЛА
 // ============================================
 async function openClassPicker() {
-  document.getElementById('pick-class-search').value = '';
+  const list = document.getElementById('pick-class-list');
+  if (!list) return;
+  const classes = await window.api.listClasses();
+
+  if (!classes || classes.length === 0) {
+    list.innerHTML = '<p class="sub" style="text-align:center; padding:20px;">Нет классов. Создайте в разделе «Классы».</p>';
+  } else {
+    list.innerHTML = classes.map(c => `
+      <div class="pick-item" onclick="pickClass(${c.id})">
+        <div class="pick-item-title">📚 ${escapeHtml(c.title)}</div>
+        <div class="pick-item-sub">${c.students_count || 0} учеников</div>
+      </div>
+    `).join('');
+  }
+
   document.getElementById('modal-pick-class').style.display = 'flex';
-  await renderPickClassList();
 }
+
 function closeClassPicker() {
   document.getElementById('modal-pick-class').style.display = 'none';
 }
-async function renderPickClassList() {
-  const list = document.getElementById('pick-class-list');
-  const search = (document.getElementById('pick-class-search')?.value || '').toLowerCase();
-  try {
-    const classes = await window.api.listClasses();
-    const filtered = search ? classes.filter(c => (c.title || '').toLowerCase().includes(search)) : classes;
-    if (!filtered.length) {
-      list.innerHTML = '<p class="sub" style="text-align:center;padding:20px;">Классов пока нет.</p>';
-      return;
-    }
-    list.innerHTML = '';
-    filtered.forEach(c => {
-      const item = document.createElement('div');
-      item.className = 'pick-item';
-      item.onclick = () => pickClass(c);
-      item.innerHTML = `
-        <div class="pick-item-icon">📚</div>
-        <div class="pick-item-content">
-          <div class="pick-item-title">${escapeHtml(c.title || 'Без названия')}</div>
-          <div class="pick-item-sub">${c.students_count || 0} учеников</div>
-        </div>
-      `;
-      list.appendChild(item);
-    });
-  } catch (e) { list.innerHTML = '<p class="err">Ошибка: ' + e.message + '</p>'; }
+
+async function pickClass(id) {
+  const result = await window.api.setLessonClass(id);
+  if (result.ok) {
+    currentLessonClass = result.class;
+    updateLessonClassUI();
+    closeClassPicker();
+  } else {
+    alert('Ошибка: ' + result.msg);
+  }
 }
-async function pickClass(cls) {
-  const full = await window.api.getClass(cls.id);
-  if (!full) return;
-  lessonClass = full;
-  await window.api.setLessonClass(full.id);
-  closeClassPicker();
-  renderLessonClass();
-  showToast('Класс выбран: ' + full.title, 'success');
-}
-async function clearLessonClass() {
-  lessonClass = null;
-  await window.api.setLessonClass(null);
-  renderLessonClass();
-}
-function renderLessonClass() {
+
+function updateLessonClassUI() {
   const empty = document.getElementById('lesson-class-empty');
   const chosen = document.getElementById('lesson-class-chosen');
-  if (!lessonClass) {
+  if (!empty || !chosen) return;
+
+  if (currentLessonClass) {
+    empty.style.display = 'none';
+    chosen.style.display = 'flex';
+    document.getElementById('lesson-class-title').textContent = '📚 ' + currentLessonClass.title;
+    document.getElementById('lesson-class-sub').textContent = currentLessonClass.students.length + ' учеников';
+  } else {
     empty.style.display = 'flex';
     chosen.style.display = 'none';
+  }
+}
+
+async function clearLessonClass() {
+  await window.api.setLessonClass(null);
+  currentLessonClass = null;
+  updateLessonClassUI();
+}
+
+async function openMaterialPicker() {
+  const list = document.getElementById('pick-list');
+  if (!list) return;
+  const materials = await window.api.listMaterials();
+
+  if (!materials || materials.length === 0) {
+    list.innerHTML = '<p class="sub" style="text-align:center; padding:20px;">Нет материалов. Создайте в разделе «Материалы».</p>';
+  } else {
+    list.innerHTML = materials.map(m => `
+      <div class="pick-item" onclick="pickMaterial(${m.id})">
+        <div class="pick-item-title">📁 ${escapeHtml(m.title)}</div>
+        <div class="pick-item-sub">${m.questions_count || 0} вопросов</div>
+      </div>
+    `).join('');
+  }
+
+  document.getElementById('modal-pick-material').style.display = 'flex';
+}
+
+function closeMaterialPicker() {
+  document.getElementById('modal-pick-material').style.display = 'none';
+}
+
+async function pickMaterial(id) {
+  const result = await window.api.setLessonMaterial(id);
+  if (result.ok) {
+    currentLessonMaterial = result.material;
+    updateLessonMaterialUI();
+    closeMaterialPicker();
+  } else {
+    alert('Ошибка: ' + result.msg);
+  }
+}
+
+function updateLessonMaterialUI() {
+  const empty = document.getElementById('lesson-material-empty');
+  const chosen = document.getElementById('lesson-material-chosen');
+  if (!empty || !chosen) return;
+
+  if (currentLessonMaterial) {
+    empty.style.display = 'none';
+    chosen.style.display = 'flex';
+    document.getElementById('lesson-material-title').textContent = '📁 ' + currentLessonMaterial.title;
+    document.getElementById('lesson-material-sub').textContent = (currentLessonMaterial.questions || []).length + ' вопросов';
+  } else {
+    empty.style.display = 'flex';
+    chosen.style.display = 'none';
+  }
+}
+
+async function clearLessonMaterial() {
+  await window.api.setLessonMaterial(null);
+  currentLessonMaterial = null;
+  updateLessonMaterialUI();
+}
+
+// ============================================
+// МАТЕРИАЛЫ
+// ============================================
+async function refreshMaterials() {
+  const list = document.getElementById('materials-list');
+  if (!list) return;
+  const materials = await window.api.listMaterials();
+
+  if (!materials || materials.length === 0) {
+    list.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">📁</div>
+        <div class="empty-title">Пока нет материалов</div>
+        <div class="empty-sub">Создайте первый материал — набор вопросов для урока</div>
+      </div>
+    `;
+  } else {
+    list.innerHTML = materials.map(m => `
+      <div class="material-card" onclick="openEditMaterial(${m.id})">
+        <div class="material-icon">📁</div>
+        <div class="material-content">
+          <div class="material-title">${escapeHtml(m.title)}</div>
+          <div class="material-sub">${m.subject || ''} ${m.grade ? '· ' + m.grade : ''}</div>
+        </div>
+        <div class="material-stats">
+          <span class="material-badge">${m.questions_count || 0} вопр.</span>
+        </div>
+      </div>
+    `).join('');
+  }
+}
+
+function createMaterial() {
+  document.getElementById('new-material-title').value = '';
+  document.getElementById('new-material-desc').value = '';
+  document.getElementById('new-material-subject').value = '';
+  document.getElementById('new-material-grade').value = '';
+  document.getElementById('modal-create-material').style.display = 'flex';
+}
+
+function closeCreateModal() {
+  document.getElementById('modal-create-material').style.display = 'none';
+}
+
+async function confirmCreateMaterial() {
+  const title = document.getElementById('new-material-title').value.trim();
+  if (!title) {
+    alert('Введите название');
     return;
   }
-  empty.style.display = 'none';
-  chosen.style.display = 'flex';
-  document.getElementById('lesson-class-title').textContent = lessonClass.title;
-  const count = (lessonClass.students?.length || 0);
-  document.getElementById('lesson-class-sub').textContent = count + ' учеников';
-}
-
-// ============================================
-// ЗАПУСК
-// ============================================
-async function startAll() {
-  setStatus('Запускаю Flask…', 'Это займёт пару секунд', '');
-  setButton('btn-start', true);
-  await window.api.startFlask();
-  setTimeout(async () => {
-    const check = await window.api.checkFlask();
-    if (check.running) {
-      flaskRunning = true;
-      setStatus('Flask работает', 'Поднимаю CloudPub…', 'running');
-      await window.api.startCloudpub();
-      setTimeout(async () => {
-        cloudpubUrl = await window.api.getCloudpubUrl();
-        document.getElementById('link-url').textContent = cloudpubUrl;
-        document.getElementById('link-box').style.display = 'flex';
-        setStatus('Всё работает!', 'Можно проводить урок', 'running');
-        setButton('btn-teacher', false);
-        setButton('btn-stop', false);
-        setButton('btn-start', true);
-      }, 3000);
-    } else {
-      setStatus('Flask не запустился', 'Проверь установку Lumen', 'error');
-      setButton('btn-start', false);
-    }
-  }, 3500);
-}
-async function stopAll() {
-  setStatus('Останавливаю…', '', '');
-  await window.api.stopCloudpub();
-  await window.api.stopFlask();
-  flaskRunning = false;
-  document.getElementById('link-box').style.display = 'none';
-  setStatus('Готово к запуску', 'Нажмите «Запустить приложение»', '');
-  setButton('btn-start', false);
-  setButton('btn-teacher', true);
-  setButton('btn-stop', true);
-}
-async function openTeacher() { await window.api.openTeacher(); }
-function copyLink() {
-  if (!cloudpubUrl) return;
-  navigator.clipboard.writeText(cloudpubUrl).then(() => showToast('Ссылка скопирована!', 'success'));
-}
-function openStudent() {
-  if (!cloudpubUrl) return;
-  window.api.openExternal(cloudpubUrl + '/student');
-}
-
-// ============================================
-// CLOUDPUB АВТОРИЗАЦИЯ
-// ============================================
-async function checkCloudpubOnStart() {
-  try {
-    const status = await window.api.checkCloudpubAuth();
-    if (!status.logged) {
-      document.getElementById('modal-cloudpub-setup').style.display = 'flex';
-    }
-  } catch (e) {
-    console.error('Ошибка проверки CloudPub:', e);
+  const data = {
+    title: title,
+    description: document.getElementById('new-material-desc').value.trim(),
+    subject: document.getElementById('new-material-subject').value.trim(),
+    grade: document.getElementById('new-material-grade').value.trim(),
+  };
+  const result = await window.api.createMaterial(data);
+  if (result && result.id) {
+    closeCreateModal();
+    await refreshMaterials();
+    await openEditMaterial(result.id);
+  } else {
+    alert('Ошибка создания материала');
   }
+}
+
+async function openEditMaterial(id) {
+  const material = await window.api.getMaterial(id);
+  if (!material) {
+    alert('Материал не найден');
+    return;
+  }
+  currentMaterialForEdit = material;
+  currentQuestions = material.questions || [];
+
+  document.getElementById('edit-material-title-header').textContent = '📝 ' + material.title;
+  document.getElementById('edit-material-title').value = material.title || '';
+  document.getElementById('edit-material-subject').value = material.subject || '';
+  document.getElementById('edit-material-desc').value = material.description || '';
+  document.getElementById('edit-material-grade').value = material.grade || '';
+  document.getElementById('edit-material-show-theory').checked = !!material.show_theory_to_students;
+
+  switchMaterialTab('theory');
+  await refreshTheory();
+  renderEditQuestions();
+
+  document.getElementById('modal-edit-material').style.display = 'flex';
+}
+
+function closeEditMaterial() {
+  document.getElementById('modal-edit-material').style.display = 'none';
+  currentMaterialForEdit = null;
+  currentQuestions = [];
+  refreshMaterials();
+}
+
+function switchMaterialTab(tab) {
+  currentMaterialTab = tab;
+  document.querySelectorAll('#material-tabs .tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  });
+  document.querySelectorAll('.material-tab-content').forEach(c => {
+    c.classList.toggle('active', c.id === 'tab-' + tab);
+  });
+}
+
+async function saveMaterialChanges() {
+  if (!currentMaterialForEdit) return;
+  const data = {
+    title: document.getElementById('edit-material-title').value.trim(),
+    subject: document.getElementById('edit-material-subject').value.trim(),
+    description: document.getElementById('edit-material-desc').value.trim(),
+    grade: document.getElementById('edit-material-grade').value.trim(),
+    show_theory_to_students: document.getElementById('edit-material-show-theory').checked,
+  };
+  if (!data.title) {
+    alert('Введите название');
+    return;
+  }
+  await window.api.updateMaterial(currentMaterialForEdit.id, data);
+  alert('Сохранено');
+  closeEditMaterial();
+}
+
+async function deleteCurrentMaterial() {
+  if (!currentMaterialForEdit) return;
+  if (!confirm('Удалить материал «' + currentMaterialForEdit.title + '»?')) return;
+  await window.api.deleteMaterial(currentMaterialForEdit.id);
+  closeEditMaterial();
+}
+
+// ============================================
+// ВОПРОСЫ
+// ============================================
+function renderEditQuestions() {
+  const list = document.getElementById('edit-questions-list');
+  const count = document.getElementById('edit-questions-count');
+  const tabCount = document.getElementById('questions-tab-count');
+  if (count) count.textContent = currentQuestions.length;
+  if (tabCount) tabCount.textContent = currentQuestions.length;
+  if (!list) return;
+
+  if (currentQuestions.length === 0) {
+    list.innerHTML = `
+      <div class="empty-questions">
+        <div class="empty-icon-small">📋</div>
+        <div>Пока нет вопросов</div>
+        <div class="sub-small">Нажмите «Добавить вопрос»</div>
+      </div>
+    `;
+    return;
+  }
+
+  list.innerHTML = currentQuestions.map((q, i) => `
+    <div class="question-card">
+      <div class="question-num">${i + 1}</div>
+      <div class="question-content">
+        <div class="question-text">${escapeHtml(q.text || '')}</div>
+        <div class="question-meta">
+          <span>${modeLabel(q.mode)}</span>
+          ${q.timer ? '<span>· ⏱ ' + q.timer + 'с</span>' : ''}
+        </div>
+      </div>
+      <div class="question-actions">
+        <button class="btn-small" onclick="editQuestion(${q.id})">✏️</button>
+        <button class="btn-small btn-danger" onclick="deleteQuestion(${q.id})">🗑</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function modeLabel(mode) {
+  return { buttons: '🎨 Кнопки', text: '✍️ Текст', quiz: '🎲 Квиз' }[mode] || '🎨 Кнопки';
+}
+
+function addQuestion() {
+  editingQuestionId = null;
+  editingQMode = 'buttons';
+  document.getElementById('question-modal-title').textContent = '📌 Новый вопрос';
+  document.getElementById('q-text').value = '';
+  document.getElementById('q-timer').value = '30';
+  document.getElementById('q-keywords').value = '';
+  document.getElementById('q-opt-0').value = '';
+  document.getElementById('q-opt-1').value = '';
+  document.getElementById('q-opt-2').value = '';
+  document.getElementById('q-opt-3').value = '';
+  document.getElementById('q-correct').value = '';
+  setQMode('buttons');
+  document.getElementById('modal-edit-question').style.display = 'flex';
+}
+
+async function editQuestion(id) {
+  const q = currentQuestions.find(x => x.id === id);
+  if (!q) return;
+  editingQuestionId = id;
+  editingQMode = q.mode || 'buttons';
+  document.getElementById('question-modal-title').textContent = '✏️ Редактирование';
+  document.getElementById('q-text').value = q.text || '';
+  document.getElementById('q-timer').value = q.timer || 30;
+  document.getElementById('q-keywords').value = (q.keywords || []).join(', ');
+  document.getElementById('q-opt-0').value = q.quiz_options?.[0] || '';
+  document.getElementById('q-opt-1').value = q.quiz_options?.[1] || '';
+  document.getElementById('q-opt-2').value = q.quiz_options?.[2] || '';
+  document.getElementById('q-opt-3').value = q.quiz_options?.[3] || '';
+  document.getElementById('q-correct').value = q.quiz_correct ?? '';
+  setQMode(editingQMode);
+  document.getElementById('modal-edit-question').style.display = 'flex';
+}
+
+function setQMode(mode) {
+  editingQMode = mode;
+  document.querySelectorAll('#q-mode-tabs .mode-tab-sm').forEach(b => {
+    b.classList.toggle('active', b.dataset.mode === mode);
+  });
+  const quiz = document.getElementById('q-quiz-block');
+  const kw = document.getElementById('q-keywords-row');
+  if (quiz) quiz.style.display = mode === 'quiz' ? 'block' : 'none';
+  if (kw) kw.style.display = mode === 'text' ? 'block' : 'none';
+}
+
+function closeQuestionModal() {
+  document.getElementById('modal-edit-question').style.display = 'none';
+}
+
+async function confirmQuestion() {
+  const text = document.getElementById('q-text').value.trim();
+  if (!text) { alert('Введите текст вопроса'); return; }
+  if (!currentMaterialForEdit) return;
+
+  const data = {
+    text: text,
+    mode: editingQMode,
+    timer: parseInt(document.getElementById('q-timer').value) || 0,
+    keywords: document.getElementById('q-keywords').value.split(',').map(s => s.trim()).filter(Boolean),
+    quiz_options: [
+      document.getElementById('q-opt-0').value.trim(),
+      document.getElementById('q-opt-1').value.trim(),
+      document.getElementById('q-opt-2').value.trim(),
+      document.getElementById('q-opt-3').value.trim(),
+    ].filter(Boolean),
+    quiz_correct: document.getElementById('q-correct').value === '' ? null : parseInt(document.getElementById('q-correct').value),
+  };
+
+  if (editingQuestionId) {
+    await window.api.updateQuestion(editingQuestionId, data);
+  } else {
+    await window.api.createQuestion(currentMaterialForEdit.id, data);
+  }
+
+  const material = await window.api.getMaterial(currentMaterialForEdit.id);
+  currentQuestions = material.questions || [];
+  renderEditQuestions();
+  closeQuestionModal();
+}
+
+async function deleteQuestion(id) {
+  if (!confirm('Удалить вопрос?')) return;
+  await window.api.deleteQuestion(id);
+  const material = await window.api.getMaterial(currentMaterialForEdit.id);
+  currentQuestions = material.questions || [];
+  renderEditQuestions();
+}
+
+// ============================================
+// ТЕОРИЯ
+// ============================================
+async function refreshTheory() {
+  if (!currentMaterialForEdit) return;
+  const list = document.getElementById('theory-list');
+  const tabCount = document.getElementById('theory-tab-count');
+  if (!list) return;
+  const theory = await window.api.listTheory(currentMaterialForEdit.id);
+
+  if (tabCount) tabCount.textContent = (theory || []).length;
+
+  if (!theory || theory.length === 0) {
+    list.innerHTML = `
+      <div class="empty-questions">
+        <div class="empty-icon-small">📖</div>
+        <div>Пока нет теории</div>
+        <div class="sub-small">Добавьте заметки, картинки, файлы или ссылки</div>
+      </div>
+    `;
+    return;
+  }
+
+  list.innerHTML = theory.map(t => `
+    <div class="theory-item">
+      <div class="theory-item-icon">${theoryIcon(t.type)}</div>
+      <div class="theory-item-content">
+        <div class="theory-item-title">${escapeHtml(t.title || '')}</div>
+        ${t.type === 'note' ? '<div class="theory-item-sub">' + escapeHtml((t.content || '').slice(0, 100)) + '</div>' : ''}
+        ${t.type === 'link' ? '<div class="theory-item-sub">' + escapeHtml(t.url || '') + '</div>' : ''}
+      </div>
+      <div class="theory-item-actions">
+        ${t.type === 'file' || t.type === 'image' ? `<button class="btn-small" onclick="openTheoryFile(${t.id})">👁</button>` : ''}
+        <button class="btn-small btn-danger" onclick="deleteTheoryItem(${t.id})">🗑</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function theoryIcon(type) {
+  return { note: '📄', link: '🔗', image: '🖼️', file: '📎' }[type] || '📄';
+}
+
+async function deleteTheoryItem(id) {
+  if (!confirm('Удалить?')) return;
+  await window.api.deleteTheory(id);
+  refreshTheory();
+}
+
+function openTheoryFile(id) {
+  window.api.openTheoryFile(id);
+}
+
+function addTheoryNote() {
+  document.getElementById('theory-note-modal-title').textContent = '📄 Новая заметка';
+  document.getElementById('theory-note-title').value = '';
+  document.getElementById('theory-note-content').value = '';
+  document.getElementById('modal-theory-note').dataset.editId = '';
+  document.getElementById('modal-theory-note').style.display = 'flex';
+}
+
+function closeTheoryNoteModal() {
+  document.getElementById('modal-theory-note').style.display = 'none';
+}
+
+async function saveTheoryNote() {
+  const title = document.getElementById('theory-note-title').value.trim();
+  const content = document.getElementById('theory-note-content').value.trim();
+  if (!title && !content) { alert('Заполните заголовок или содержимое'); return; }
+  await window.api.createTheoryNote(currentMaterialForEdit.id, { title, content });
+  closeTheoryNoteModal();
+  refreshTheory();
+}
+
+function addTheoryLink() {
+  document.getElementById('theory-link-title').value = '';
+  document.getElementById('theory-link-url').value = '';
+  document.getElementById('modal-theory-link').style.display = 'flex';
+}
+
+function closeTheoryLinkModal() {
+  document.getElementById('modal-theory-link').style.display = 'none';
+}
+
+async function saveTheoryLink() {
+  const title = document.getElementById('theory-link-title').value.trim();
+  const url = document.getElementById('theory-link-url').value.trim();
+  if (!url) { alert('Введите URL'); return; }
+  await window.api.createTheoryLink(currentMaterialForEdit.id, { title, url });
+  closeTheoryLinkModal();
+  refreshTheory();
+}
+
+async function addTheoryImage() {
+  const result = await window.api.pickFile('image');
+  if (!result || !result.ok) return;
+  await window.api.createTheoryFile(currentMaterialForEdit.id, {
+    title: result.fileName, filePath: result.filePath, fileType: 'image', size: result.size
+  });
+  refreshTheory();
+}
+
+async function addTheoryFile() {
+  const result = await window.api.pickFile('document');
+  if (!result || !result.ok) return;
+  await window.api.createTheoryFile(currentMaterialForEdit.id, {
+    title: result.fileName, filePath: result.filePath, fileType: 'file', size: result.size
+  });
+  refreshTheory();
+}
+
+// ============================================
+// КЛАССЫ
+// ============================================
+async function refreshClasses() {
+  const list = document.getElementById('classes-list');
+  if (!list) return;
+  const classes = await window.api.listClasses();
+
+  if (!classes || classes.length === 0) {
+    list.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">📚</div>
+        <div class="empty-title">Пока нет классов</div>
+        <div class="empty-sub">Создайте класс — список учеников для урока</div>
+      </div>
+    `;
+  } else {
+    list.innerHTML = classes.map(c => `
+      <div class="material-card" onclick="openEditClass(${c.id})">
+        <div class="material-icon">📚</div>
+        <div class="material-content">
+          <div class="material-title">${escapeHtml(c.title)}</div>
+          <div class="material-sub">${c.description || ''}</div>
+        </div>
+        <div class="material-stats">
+          <span class="material-badge">${c.students_count || 0} уч.</span>
+        </div>
+      </div>
+    `).join('');
+  }
+}
+
+function createClass() {
+  document.getElementById('new-class-title').value = '';
+  document.getElementById('new-class-desc').value = '';
+  document.getElementById('modal-create-class').style.display = 'flex';
+}
+
+function closeCreateClass() {
+  document.getElementById('modal-create-class').style.display = 'none';
+}
+
+async function confirmCreateClass() {
+  const title = document.getElementById('new-class-title').value.trim();
+  if (!title) { alert('Введите название'); return; }
+  const result = await window.api.createClass({
+    title: title,
+    description: document.getElementById('new-class-desc').value.trim(),
+  });
+  if (result && result.id) {
+    closeCreateClass();
+    await refreshClasses();
+    await openEditClass(result.id);
+  }
+}
+
+async function openEditClass(id) {
+  const cls = await window.api.getClass(id);
+  if (!cls) return;
+  currentClassForEdit = cls;
+  currentStudents = cls.students || [];
+
+  document.getElementById('edit-class-title-header').textContent = '📚 ' + cls.title;
+  document.getElementById('edit-class-title').value = cls.title || '';
+  document.getElementById('edit-class-desc').value = cls.description || '';
+  renderEditStudents();
+
+  document.getElementById('modal-edit-class').style.display = 'flex';
+}
+
+function closeEditClass() {
+  document.getElementById('modal-edit-class').style.display = 'none';
+  currentClassForEdit = null;
+  refreshClasses();
+}
+
+function renderEditStudents() {
+  const list = document.getElementById('edit-students-list');
+  const count = document.getElementById('edit-students-count');
+  if (count) count.textContent = currentStudents.length;
+  if (!list) return;
+
+  if (currentStudents.length === 0) {
+    list.innerHTML = `
+      <div class="empty-questions">
+        <div class="empty-icon-small">👥</div>
+        <div>Пока нет учеников</div>
+      </div>
+    `;
+    return;
+  }
+
+  list.innerHTML = currentStudents.map(s => `
+    <div class="student-row">
+      <span>${escapeHtml(s.full_name)}</span>
+      <button class="btn-small btn-danger" onclick="removeStudent(${s.id})">✕</button>
+    </div>
+  `).join('');
+}
+
+async function removeStudent(id) {
+  if (!confirm('Удалить ученика?')) return;
+  await window.api.deleteStudent(id);
+  const cls = await window.api.getClass(currentClassForEdit.id);
+  currentStudents = cls.students || [];
+  renderEditStudents();
+}
+
+async function saveClassChanges() {
+  if (!currentClassForEdit) return;
+  const title = document.getElementById('edit-class-title').value.trim();
+  if (!title) { alert('Введите название'); return; }
+  await window.api.updateClass(currentClassForEdit.id, {
+    title: title,
+    description: document.getElementById('edit-class-desc').value.trim(),
+  });
+  alert('Сохранено');
+  closeEditClass();
+}
+
+async function deleteCurrentClass() {
+  if (!currentClassForEdit) return;
+  if (!confirm('Удалить класс «' + currentClassForEdit.title + '»?')) return;
+  await window.api.deleteClass(currentClassForEdit.id);
+  closeEditClass();
+}
+
+function openAddStudents() {
+  document.getElementById('bulk-students-text').value = '';
+  document.getElementById('modal-add-students').style.display = 'flex';
+}
+
+function closeAddStudents() {
+  document.getElementById('modal-add-students').style.display = 'none';
+}
+
+async function confirmAddStudents() {
+  const text = document.getElementById('bulk-students-text').value.trim();
+  if (!text) { alert('Введите список'); return; }
+  await window.api.addStudentsBulk(currentClassForEdit.id, text);
+  const cls = await window.api.getClass(currentClassForEdit.id);
+  currentStudents = cls.students || [];
+  renderEditStudents();
+  closeAddStudents();
+}
+
+// ============================================
+// ИСТОРИЯ
+// ============================================
+async function refreshHistory() {
+  const list = document.getElementById('history-list');
+  if (!list) return;
+  const lessons = await window.api.listLessons(50);
+
+  if (!lessons || lessons.length === 0) {
+    list.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">📊</div>
+        <div class="empty-title">Пока нет уроков</div>
+        <div class="empty-sub">Проведите первый урок — он появится здесь</div>
+      </div>
+    `;
+    return;
+  }
+
+  list.innerHTML = lessons.map(l => `
+    <div class="material-card">
+      <div class="material-icon">📊</div>
+      <div class="material-content">
+        <div class="material-title">${escapeHtml(l.material_title || 'Урок')}</div>
+        <div class="material-sub">${escapeHtml(l.class_title || '')} · ${formatDate(l.created_at)}</div>
+      </div>
+      <div class="material-stats">
+        <span class="material-badge">${l.avg_green_pct || 0}%</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+function formatDate(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  return d.toLocaleDateString('ru-RU') + ' ' + d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+}
+
+// ============================================
+// CLOUDPUB
+// ============================================
+function openCloudpubModal() {
+  document.getElementById('cloudpub-email').value = '';
+  document.getElementById('cloudpub-password').value = '';
+  document.getElementById('cloudpub-status').textContent = '';
+  document.getElementById('modal-cloudpub-setup').style.display = 'flex';
 }
 
 function closeCloudpubModal() {
@@ -265,76 +965,48 @@ function closeCloudpubModal() {
 }
 
 function skipCloudpubSetup() {
-  showToast('CloudPub пропущен. Ученики смогут заходить только через локальную сеть.', '');
   closeCloudpubModal();
 }
 
 async function doCloudpubLogin() {
   const email = document.getElementById('cloudpub-email').value.trim();
   const password = document.getElementById('cloudpub-password').value;
-  const statusEl = document.getElementById('cloudpub-status');
-  const btn = document.getElementById('cloudpub-login-btn');
-
   if (!email || !password) {
-    statusEl.textContent = '⚠️ Заполните email и пароль';
-    statusEl.style.color = '#ff8a7a';
+    document.getElementById('cloudpub-status').textContent = '⚠️ Введите email и пароль';
     return;
   }
-
-  statusEl.textContent = '⏳ Авторизация…';
-  statusEl.style.color = '#9aa0b4';
+  const btn = document.getElementById('cloudpub-login-btn');
   btn.disabled = true;
+  btn.textContent = '⏳ Вход…';
+  document.getElementById('cloudpub-status').textContent = 'Подключение к CloudPub…';
 
-  try {
-    const result = await window.api.loginCloudpub(email, password);
-    if (result.ok) {
-      statusEl.textContent = '✅ Успешно! Можно закрыть окно.';
-      statusEl.style.color = '#7dffb0';
-      setTimeout(() => {
-        closeCloudpubModal();
-        showToast('✅ CloudPub настроен!', 'success');
-      }, 1500);
-    } else {
-      statusEl.textContent = '❌ ' + (result.msg || 'Ошибка входа');
-      statusEl.style.color = '#ff8a7a';
-      btn.disabled = false;
-    }
-  } catch (e) {
-    statusEl.textContent = '❌ Ошибка: ' + e.message;
-    statusEl.style.color = '#ff8a7a';
-    btn.disabled = false;
+  const result = await window.api.loginCloudpub(email, password);
+
+  btn.disabled = false;
+  btn.textContent = 'Войти';
+
+  if (result.ok) {
+    document.getElementById('cloudpub-status').innerHTML = '<span style="color:#7dffb0;">✅ Успешно! Можно закрыть окно.</span>';
+    setTimeout(() => closeCloudpubModal(), 2000);
+  } else {
+    document.getElementById('cloudpub-status').innerHTML = '<span style="color:#ff7b7b;">❌ ' + (result.msg || 'Ошибка входа') + '</span>';
   }
 }
 
 async function openCloudpubManage() {
-  const statusEl = document.getElementById('cloudpub-manage-status');
-  const linkEl = document.getElementById('cloudpub-manage-link');
-  const logoutBtn = document.getElementById('cloudpub-logout-btn');
-
-  statusEl.textContent = '⏳ Проверка статуса…';
-  statusEl.style.color = '#9aa0b4';
-  linkEl.style.display = 'none';
-  logoutBtn.style.display = 'none';
-
   document.getElementById('modal-cloudpub-manage').style.display = 'flex';
+  document.getElementById('cloudpub-manage-status').textContent = 'Проверка статуса…';
+  document.getElementById('cloudpub-manage-link').style.display = 'none';
+  document.getElementById('cloudpub-logout-btn').style.display = 'none';
 
-  try {
-    const status = await window.api.checkCloudpubAuth();
-    if (status.logged) {
-      statusEl.innerHTML = '✅ <b>Авторизован</b><br>Ваш аккаунт CloudPub активен.';
-      statusEl.style.color = '#7dffb0';
-      const url = await window.api.getCloudpubUrl();
-      linkEl.textContent = url;
-      linkEl.style.display = 'block';
-      logoutBtn.style.display = 'inline-flex';
-    } else {
-      statusEl.innerHTML = '⚠️ <b>Не авторизован</b><br>Ученики смогут заходить только через локальную сеть.';
-      statusEl.style.color = '#f5c06b';
-      logoutBtn.style.display = 'none';
-    }
-  } catch (e) {
-    statusEl.textContent = 'Ошибка: ' + e.message;
-    statusEl.style.color = '#ff8a7a';
+  const result = await window.api.checkCloudpubAuth();
+  const status = document.getElementById('cloudpub-manage-status');
+
+  if (result.logged) {
+    status.innerHTML = '<span style="color:#7dffb0;">✅ Авторизован</span><br><span style="color:#9aa0b4; font-size:13px;">Ученики могут подключаться через интернет</span>';
+    document.getElementById('cloudpub-logout-btn').style.display = 'inline-block';
+  } else {
+    status.innerHTML = '<span style="color:#f5c06b;">⚠️ Не авторизован</span><br><span style="color:#9aa0b4; font-size:13px;">Нажмите «Управление CloudPub» в настройках, чтобы войти</span>';
   }
 }
 
@@ -343,740 +1015,63 @@ function closeCloudpubManage() {
 }
 
 async function doCloudpubLogout() {
-  if (!confirm('Выйти из CloudPub? Ученики больше не смогут подключаться через интернет.')) return;
+  if (!confirm('Выйти из CloudPub?')) return;
   await window.api.logoutCloudpub();
-  showToast('Вы вышли из CloudPub', '');
   closeCloudpubManage();
 }
 
 // ============================================
-// ИНСТРУКЦИЯ ДЛЯ УЧИТЕЛЯ
+// ПОМОЩЬ
 // ============================================
 function openHelp() {
-  const modal = document.getElementById('modal-help');
-  modal.style.display = 'flex';
-  const body = modal.querySelector('.modal-body');
-  if (body) body.scrollTop = 0;
+  document.getElementById('modal-help').style.display = 'flex';
 }
 
 function closeHelp() {
   document.getElementById('modal-help').style.display = 'none';
 }
 
-function scrollHelpTo(sectionId) {
-  const modal = document.getElementById('modal-help');
-  const body = modal.querySelector('.modal-body');
-  const section = document.getElementById(sectionId);
-  if (body && section) {
-    body.scrollTo({
-      top: section.offsetTop - body.offsetTop - 20,
-      behavior: 'smooth'
-    });
-  }
+function scrollHelpTo(id) {
+  const el = document.getElementById(id);
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // ============================================
-// МАТЕРИАЛЫ — СОЗДАНИЕ
+// ТЕМА
 // ============================================
-function createMaterial() {
-  document.getElementById('new-material-title').value = '';
-  document.getElementById('new-material-desc').value = '';
-  document.getElementById('new-material-subject').value = '';
-  document.getElementById('new-material-grade').value = '';
-  document.getElementById('modal-create-material').style.display = 'flex';
-  setTimeout(() => document.getElementById('new-material-title').focus(), 100);
-}
-function closeCreateModal() {
-  document.getElementById('modal-create-material').style.display = 'none';
-}
-async function confirmCreateMaterial() {
-  const title = document.getElementById('new-material-title').value.trim();
-  if (!title) { showToast('Введи название материала', 'error'); return; }
-  const data = {
-    title: title,
-    description: document.getElementById('new-material-desc').value.trim(),
-    subject: document.getElementById('new-material-subject').value.trim(),
-    grade: document.getElementById('new-material-grade').value.trim()
-  };
-  try {
-    const mat = await window.api.createMaterial(data);
-    closeCreateModal();
-    showToast('Материал создан!', 'success');
-    renderMaterials();
-    if (mat && mat.id) setTimeout(() => openMaterial(mat.id), 300);
-  } catch (e) { showToast('Ошибка: ' + e.message, 'error'); }
+function toggleTheme(checked) {
+  document.body.classList.toggle('light', checked);
+  localStorage.setItem('theme', checked ? 'light' : 'dark');
 }
 
-// ============================================
-// МАТЕРИАЛЫ — СПИСОК
-// ============================================
-async function renderMaterials() {
-  const list = document.getElementById('materials-list');
-  const search = (document.getElementById('materials-search')?.value || '').toLowerCase();
-  try {
-    const materials = await window.api.listMaterials();
-    const filtered = search ? materials.filter(m => (m.title || '').toLowerCase().includes(search)) : materials;
-    const badge = document.getElementById('materials-badge');
-    if (badge) {
-      badge.textContent = materials.length;
-      badge.style.display = materials.length > 0 ? 'inline-flex' : 'none';
-    }
-    if (!filtered.length) {
-      list.innerHTML = `<div class="empty-state"><div class="empty-icon">📁</div><div class="empty-title">${search ? 'Ничего не найдено' : 'Пока нет материалов'}</div><div class="empty-sub">${search ? 'Попробуй другой запрос' : 'Создайте первый материал'}</div></div>`;
-      return;
-    }
-    list.innerHTML = '';
-    filtered.forEach(m => {
-      const card = document.createElement('div');
-      card.className = 'material-card' + (m.favorite ? ' favorite' : '');
-      card.onclick = () => openMaterial(m.id);
-      card.innerHTML = `
-        <button class="material-fav-btn" onclick="event.stopPropagation(); toggleFav(${m.id})">${m.favorite ? '⭐' : '☆'}</button>
-        <div class="material-title">${escapeHtml(m.title || 'Без названия')}</div>
-        <div class="material-desc">${escapeHtml(m.description || 'Без описания')}</div>
-        <div class="material-meta">
-          <span class="material-count">${m.question_count || 0} вопросов</span>
-          ${m.theory_count ? `<span class="material-tag" style="background: rgba(123,60,255,.2); color:#b19dff;">📖 ${m.theory_count}</span>` : ''}
-          ${m.subject ? `<span class="material-tag">${escapeHtml(m.subject)}</span>` : ''}
-        </div>
-      `;
-      list.appendChild(card);
-    });
-  } catch (e) { console.error(e); }
-}
-async function toggleFav(id) {
-  await window.api.toggleFavorite(id);
-  renderMaterials();
-}
-
-// ============================================
-// РЕДАКТОР МАТЕРИАЛА
-// ============================================
-async function openMaterial(id) {
-  try {
-    const material = await window.api.getMaterial(id);
-    if (!material) { showToast('Материал не найден', 'error'); return; }
-    currentMaterialId = id;
-    currentMaterial = material;
-    document.getElementById('edit-material-title-header').textContent = '📝 ' + (material.title || 'Материал');
-    document.getElementById('edit-material-title').value = material.title || '';
-    document.getElementById('edit-material-desc').value = material.description || '';
-    document.getElementById('edit-material-subject').value = material.subject || '';
-    document.getElementById('edit-material-grade').value = material.grade || '';
-    document.getElementById('edit-material-show-theory').checked = !!material.show_theory_to_students;
-    renderTheoryInEditor();
-    renderQuestionsInEditor();
-    switchMaterialTab(currentMaterialTab);
-    document.getElementById('modal-edit-material').style.display = 'flex';
-  } catch (e) { showToast('Ошибка: ' + e.message, 'error'); }
-}
-function closeEditMaterial() {
-  document.getElementById('modal-edit-material').style.display = 'none';
-  currentMaterialId = null;
-  currentMaterial = null;
-}
-function switchMaterialTab(tab) {
-  currentMaterialTab = tab;
-  document.querySelectorAll('#material-tabs .tab-btn').forEach(t => {
-    t.classList.toggle('active', t.dataset.tab === tab);
-  });
-  document.querySelectorAll('.material-tab-content').forEach(c => c.classList.remove('active'));
-  const el = document.getElementById('tab-' + tab);
-  if (el) el.classList.add('active');
-}
-
-// ============================================
-// ТЕОРИЯ
-// ============================================
-function renderTheoryInEditor() {
-  const list = document.getElementById('theory-list');
-  const theory = (currentMaterial && currentMaterial.theory) || [];
-  document.getElementById('theory-tab-count').textContent = theory.length;
-  if (!theory.length) {
-    list.innerHTML = `<div class="empty-questions"><div class="empty-icon-small">📖</div><div>Пока нет теории</div><div class="sub-small">Добавьте заметки, картинки, файлы или ссылки</div></div>`;
-    return;
-  }
-  list.innerHTML = '';
-  theory.forEach(item => {
-    const el = document.createElement('div');
-    el.className = 'theory-item';
-    el.dataset.id = item.id;
-    let typeBadge, bodyHtml = '';
-    if (item.type === 'note') {
-      typeBadge = '<span class="theory-type-badge note">📄 Заметка</span>';
-      bodyHtml = `<div class="theory-content">${renderMarkdown(item.content || '')}</div>`;
-    } else if (item.type === 'link') {
-      typeBadge = '<span class="theory-type-badge link">🔗 Ссылка</span>';
-      bodyHtml = `<a class="theory-link-url" onclick="openTheoryLink('${escapeHtml(item.content)}')">${escapeHtml(item.content)}</a>`;
-    } else if (item.type === 'image') {
-      typeBadge = '<span class="theory-type-badge image">🖼️ Картинка</span>';
-      bodyHtml = `<img class="theory-image-preview" data-image-id="${item.id}" src="" alt="${escapeHtml(item.title)}" onclick="openTheoryFile(${item.id})">`;
-    } else if (item.type === 'file') {
-      typeBadge = '<span class="theory-type-badge file">📎 Файл</span>';
-      const sizeStr = formatSize(item.size || 0);
-      bodyHtml = `<div class="theory-file-info" onclick="openTheoryFile(${item.id})"><span class="theory-file-icon">📎</span><div class="theory-file-info-text"><div class="theory-file-name">${escapeHtml(item.original_name || item.title)}</div><div class="theory-file-size">${sizeStr}</div></div></div>`;
-    }
-    el.innerHTML = `
-      <div class="theory-header">
-        ${typeBadge}
-        <div class="theory-title">${escapeHtml(item.title || 'Без названия')}</div>
-        <div class="theory-actions">
-          <button class="theory-action-btn" onclick="editTheoryItem(${item.id})" title="Редактировать">✏️</button>
-          <button class="theory-action-btn delete" onclick="deleteTheoryItem(${item.id})" title="Удалить">🗑</button>
-        </div>
-      </div>
-      ${bodyHtml}
-    `;
-    list.appendChild(el);
-  });
-  theory.filter(t => t.type === 'image').forEach(async (item) => {
-    const imgEl = list.querySelector(`img[data-image-id="${item.id}"]`);
-    if (!imgEl) return;
-    const dataUrl = await window.api.readFileBase64(item.id);
-    if (dataUrl) imgEl.src = dataUrl;
-  });
-}
-function formatSize(bytes) {
-  if (!bytes) return '0 Б';
-  if (bytes < 1024) return bytes + ' Б';
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' КБ';
-  return (bytes / (1024 * 1024)).toFixed(1) + ' МБ';
-}
-function renderMarkdown(text) {
-  if (!text) return '';
-  let html = escapeHtml(text);
-  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  html = html.replace(/`(.+?)`/g, '<code>$1</code>');
-  const lines = html.split('\n');
-  const result = [];
-  let inUl = false;
-  for (let line of lines) {
-    const ulMatch = line.match(/^[\-\*] (.+)/);
-    if (ulMatch) {
-      if (!inUl) { result.push('<ul>'); inUl = true; }
-      result.push('<li>' + ulMatch[1] + '</li>');
-    } else {
-      if (inUl) { result.push('</ul>'); inUl = false; }
-      if (line.trim()) result.push('<p>' + line + '</p>');
-    }
-  }
-  if (inUl) result.push('</ul>');
-  return result.join('');
-}
-
-function addTheoryNote() {
-  currentTheoryEditId = null;
-  currentTheoryEditType = 'note';
-  document.getElementById('theory-note-modal-title').textContent = '📄 Новая заметка';
-  document.getElementById('theory-note-title').value = '';
-  document.getElementById('theory-note-content').value = '';
-  document.getElementById('modal-theory-note').style.display = 'flex';
-}
-function closeTheoryNoteModal() {
-  document.getElementById('modal-theory-note').style.display = 'none';
-  currentTheoryEditId = null;
-}
-async function saveTheoryNote() {
-  const title = document.getElementById('theory-note-title').value.trim() || 'Заметка';
-  const content = document.getElementById('theory-note-content').value;
-  if (!content.trim()) { showToast('Введи содержимое', 'error'); return; }
-  try {
-    if (currentTheoryEditId) {
-      await window.api.updateTheory(currentTheoryEditId, { title, content });
-    } else {
-      await window.api.createTheoryNote(currentMaterialId, { title, content });
-    }
-    closeTheoryNoteModal();
-    currentMaterial = await window.api.getMaterial(currentMaterialId);
-    renderTheoryInEditor();
-    renderMaterials();
-  } catch (e) { showToast('Ошибка: ' + e.message, 'error'); }
-}
-function addTheoryLink() {
-  currentTheoryEditId = null;
-  currentTheoryEditType = 'link';
-  document.getElementById('theory-link-title').value = '';
-  document.getElementById('theory-link-url').value = '';
-  document.getElementById('modal-theory-link').style.display = 'flex';
-}
-function closeTheoryLinkModal() {
-  document.getElementById('modal-theory-link').style.display = 'none';
-  currentTheoryEditId = null;
-}
-async function saveTheoryLink() {
-  const title = document.getElementById('theory-link-title').value.trim() || 'Ссылка';
-  const url = document.getElementById('theory-link-url').value.trim();
-  if (!url) { showToast('Введи URL', 'error'); return; }
-  try {
-    if (currentTheoryEditId) {
-      await window.api.updateTheory(currentTheoryEditId, { title, content: url });
-    } else {
-      await window.api.createTheoryLink(currentMaterialId, { title, content: url });
-    }
-    closeTheoryLinkModal();
-    currentMaterial = await window.api.getMaterial(currentMaterialId);
-    renderTheoryInEditor();
-    renderMaterials();
-  } catch (e) { showToast('Ошибка: ' + e.message, 'error'); }
-}
-async function addTheoryImage() {
-  const result = await window.api.pickFile('image');
-  if (!result || !result.ok) return;
-  await saveFileAsTheory('image', result);
-}
-async function addTheoryFile() {
-  const result = await window.api.pickFile('file');
-  if (!result || !result.ok) return;
-  await saveFileAsTheory('file', result);
-}
-async function saveFileAsTheory(type, fileInfo) {
-  try {
-    await window.api.createTheoryFile(currentMaterialId, {
-      type: type, title: fileInfo.fileName,
-      original_name: fileInfo.fileName, sourcePath: fileInfo.filePath
-    });
-    showToast(type === 'image' ? 'Картинка добавлена' : 'Файл добавлен', 'success');
-    currentMaterial = await window.api.getMaterial(currentMaterialId);
-    renderTheoryInEditor();
-    renderMaterials();
-  } catch (e) { showToast('Ошибка: ' + e.message, 'error'); }
-}
-async function editTheoryItem(id) {
-  const item = currentMaterial.theory.find(t => t.id === id);
-  if (!item) return;
-  if (item.type === 'note') {
-    currentTheoryEditId = id;
-    document.getElementById('theory-note-modal-title').textContent = '📄 Редактирование';
-    document.getElementById('theory-note-title').value = item.title;
-    document.getElementById('theory-note-content').value = item.content;
-    document.getElementById('modal-theory-note').style.display = 'flex';
-  } else if (item.type === 'link') {
-    currentTheoryEditId = id;
-    document.getElementById('theory-link-title').value = item.title;
-    document.getElementById('theory-link-url').value = item.content;
-    document.getElementById('modal-theory-link').style.display = 'flex';
-  } else {
-    showToast('Файлы редактировать нельзя', '');
-  }
-}
-async function deleteTheoryItem(id) {
-  if (!confirm('Удалить этот элемент теории?')) return;
-  await window.api.deleteTheory(id);
-  currentMaterial = await window.api.getMaterial(currentMaterialId);
-  renderTheoryInEditor();
-  renderMaterials();
-}
-async function openTheoryFile(id) { await window.api.openTheoryFile(id); }
-function openTheoryLink(url) { window.api.openExternal(url); }
-
-// ============================================
-// ВОПРОСЫ
-// ============================================
-function renderQuestionsInEditor() {
-  const list = document.getElementById('edit-questions-list');
-  const countEl = document.getElementById('edit-questions-count');
-  const questions = (currentMaterial && currentMaterial.questions) || [];
-  countEl.textContent = questions.length;
-  document.getElementById('questions-tab-count').textContent = questions.length;
-  if (!questions.length) {
-    list.innerHTML = `<div class="empty-questions"><div class="empty-icon-small">📋</div><div>Пока нет вопросов</div></div>`;
-    return;
-  }
-  list.innerHTML = '';
-  questions.forEach((q, idx) => {
-    const item = document.createElement('div');
-    item.className = 'question-editor-item';
-    const modeLabels = { buttons: '🎨 Кнопки', text: '✍️ Текст', quiz: '🎲 Квиз' };
-    const modeCls = q.mode || 'buttons';
-    let optionsPreview = '';
-    if (q.mode === 'quiz') {
-      try {
-        const opts = JSON.parse(q.quiz_options || '[]');
-        const letters = ['A', 'B', 'C', 'D'];
-        optionsPreview = `<div class="q-options-preview">` + opts.map((o, i) => {
-          const isCorrect = (q.quiz_correct !== null && q.quiz_correct !== undefined && i === q.quiz_correct);
-          return `<span class="q-opt-preview${isCorrect ? ' correct' : ''}">${letters[i]}. ${escapeHtml(o)}${isCorrect ? ' ✓' : ''}</span>`;
-        }).join('') + `</div>`;
-      } catch (e) {}
-    }
-    const metaChips = [];
-    metaChips.push(`<span class="q-meta-chip ${modeCls}">${modeLabels[modeCls] || 'Кнопки'}</span>`);
-    if (q.timer > 0) metaChips.push(`<span class="q-meta-chip">⏱ ${q.timer}с</span>`);
-    if (q.mode === 'text' && q.keywords) metaChips.push(`<span class="q-meta-chip">🔑 ${escapeHtml(q.keywords)}</span>`);
-    item.innerHTML = `
-      <div class="q-position">${idx + 1}</div>
-      <div class="q-body">
-        <div class="q-text-line">${escapeHtml(q.text || '')}</div>
-        <div class="q-meta-line">${metaChips.join('')}</div>
-        ${optionsPreview}
-      </div>
-      <div class="q-actions">
-        <button class="q-action-btn" onclick="editQuestion(${q.id})">✏️</button>
-        <button class="q-action-btn delete" onclick="deleteQuestion(${q.id})">🗑</button>
-      </div>
-    `;
-    list.appendChild(item);
-  });
-}
-async function saveMaterialChanges() {
-  if (!currentMaterialId) return;
-  const data = {
-    title: document.getElementById('edit-material-title').value.trim(),
-    description: document.getElementById('edit-material-desc').value.trim(),
-    subject: document.getElementById('edit-material-subject').value.trim(),
-    grade: document.getElementById('edit-material-grade').value.trim(),
-    show_theory_to_students: document.getElementById('edit-material-show-theory').checked
-  };
-  if (!data.title) { showToast('Название не может быть пустым', 'error'); return; }
-  await window.api.updateMaterial(currentMaterialId, data);
-  showToast('Сохранено!', 'success');
-  currentMaterial = await window.api.getMaterial(currentMaterialId);
-  document.getElementById('edit-material-title-header').textContent = '📝 ' + currentMaterial.title;
-  renderMaterials();
-}
-async function deleteCurrentMaterial() {
-  if (!currentMaterialId) return;
-  if (!confirm('Удалить материал?')) return;
-  await window.api.deleteMaterial(currentMaterialId);
-  showToast('Материал удалён', 'success');
-  closeEditMaterial();
-  renderMaterials();
-}
-async function addQuestion() {
-  if (!currentMaterialId) return;
-  currentQuestionId = null;
-  document.getElementById('question-modal-title').textContent = '📌 Новый вопрос';
-  document.getElementById('q-text').value = '';
-  document.getElementById('q-timer').value = '30';
-  document.getElementById('q-keywords').value = '';
-  for (let i = 0; i < 4; i++) document.getElementById('q-opt-' + i).value = '';
-  document.getElementById('q-correct').value = '';
-  setQMode('buttons');
-  document.getElementById('modal-edit-question').style.display = 'flex';
-}
-async function editQuestion(id) {
-  if (!currentMaterial) return;
-  const q = currentMaterial.questions.find(x => x.id === id);
-  if (!q) return;
-  currentQuestionId = id;
-  document.getElementById('question-modal-title').textContent = '📌 Редактирование';
-  document.getElementById('q-text').value = q.text || '';
-  document.getElementById('q-timer').value = String(q.timer || 0);
-  document.getElementById('q-keywords').value = q.keywords || '';
-  const opts = JSON.parse(q.quiz_options || '[]');
-  for (let i = 0; i < 4; i++) document.getElementById('q-opt-' + i).value = opts[i] || '';
-  document.getElementById('q-correct').value = (q.quiz_correct !== null && q.quiz_correct !== undefined) ? String(q.quiz_correct) : '';
-  setQMode(q.mode || 'buttons');
-  document.getElementById('modal-edit-question').style.display = 'flex';
-}
-function setQMode(mode) {
-  currentQMode = mode;
-  document.querySelectorAll('#q-mode-tabs .mode-tab-sm').forEach(t => {
-    t.classList.toggle('active', t.dataset.mode === mode);
-  });
-  document.getElementById('q-quiz-block').style.display = mode === 'quiz' ? 'block' : 'none';
-  document.getElementById('q-keywords-row').style.display = mode === 'text' ? 'flex' : 'none';
-}
-function closeQuestionModal() {
-  document.getElementById('modal-edit-question').style.display = 'none';
-  currentQuestionId = null;
-}
-async function confirmQuestion() {
-  const text = document.getElementById('q-text').value.trim();
-  if (!text) { showToast('Введи текст вопроса', 'error'); return; }
-  const data = {
-    text: text, mode: currentQMode,
-    timer: parseInt(document.getElementById('q-timer').value) || 0,
-    keywords: document.getElementById('q-keywords').value.trim(),
-    quiz_options: [], quiz_correct: null
-  };
-  if (currentQMode === 'quiz') {
-    const opts = [];
-    for (let i = 0; i < 4; i++) {
-      const v = document.getElementById('q-opt-' + i).value.trim();
-      if (v) opts.push(v);
-    }
-    if (opts.length < 2) { showToast('Заполни хотя бы 2 варианта', 'error'); return; }
-    data.quiz_options = opts;
-    const corr = document.getElementById('q-correct').value;
-    data.quiz_correct = corr !== '' ? parseInt(corr) : null;
-  }
-  try {
-    if (currentQuestionId) {
-      await window.api.updateQuestion(currentQuestionId, data);
-    } else {
-      await window.api.createQuestion(currentMaterialId, data);
-    }
-    closeQuestionModal();
-    currentMaterial = await window.api.getMaterial(currentMaterialId);
-    renderQuestionsInEditor();
-    renderMaterials();
-  } catch (e) { showToast('Ошибка: ' + e.message, 'error'); }
-}
-async function deleteQuestion(id) {
-  if (!confirm('Удалить этот вопрос?')) return;
-  await window.api.deleteQuestion(id);
-  currentMaterial = await window.api.getMaterial(currentMaterialId);
-  renderQuestionsInEditor();
-  renderMaterials();
-}
-
-// ============================================
-// КЛАССЫ
-// ============================================
-function createClass() {
-  document.getElementById('new-class-title').value = '';
-  document.getElementById('new-class-desc').value = '';
-  document.getElementById('modal-create-class').style.display = 'flex';
-}
-function closeCreateClass() { document.getElementById('modal-create-class').style.display = 'none'; }
-async function confirmCreateClass() {
-  const title = document.getElementById('new-class-title').value.trim();
-  if (!title) { showToast('Введи название класса', 'error'); return; }
-  const data = { title, description: document.getElementById('new-class-desc').value.trim() };
-  try {
-    const cls = await window.api.createClass(data);
-    closeCreateClass();
-    renderClasses();
-    if (cls && cls.id) setTimeout(() => openClass(cls.id), 300);
-  } catch (e) { showToast('Ошибка: ' + e.message, 'error'); }
-}
-async function renderClasses() {
-  const list = document.getElementById('classes-list');
-  const search = (document.getElementById('classes-search')?.value || '').toLowerCase();
-  try {
-    const classes = await window.api.listClasses();
-    const filtered = search ? classes.filter(c => (c.title || '').toLowerCase().includes(search)) : classes;
-    const badge = document.getElementById('classes-badge');
-    if (badge) {
-      badge.textContent = classes.length;
-      badge.style.display = classes.length > 0 ? 'inline-flex' : 'none';
-    }
-    if (!filtered.length) {
-      list.innerHTML = `<div class="empty-state"><div class="empty-icon">📚</div><div class="empty-title">${search ? 'Ничего не найдено' : 'Пока нет классов'}</div><div class="empty-sub">${search ? 'Попробуй другой запрос' : 'Создайте первый класс'}</div></div>`;
-      return;
-    }
-    list.innerHTML = '';
-    filtered.forEach(c => {
-      const card = document.createElement('div');
-      card.className = 'material-card';
-      card.onclick = () => openClass(c.id);
-      card.innerHTML = `
-        <div class="material-title">📚 ${escapeHtml(c.title || 'Без названия')}</div>
-        <div class="material-desc">${escapeHtml(c.description || 'Без описания')}</div>
-        <div class="material-meta"><span class="material-count">${c.students_count || 0} учеников</span></div>
-      `;
-      list.appendChild(card);
-    });
-  } catch (e) { console.error(e); }
-}
-async function openClass(id) {
-  const cls = await window.api.getClass(id);
-  if (!cls) return;
-  currentClassId = id;
-  currentClass = cls;
-  document.getElementById('edit-class-title-header').textContent = '📚 ' + (cls.title || 'Класс');
-  document.getElementById('edit-class-title').value = cls.title || '';
-  document.getElementById('edit-class-desc').value = cls.description || '';
-  renderStudentsInEditor();
-  document.getElementById('modal-edit-class').style.display = 'flex';
-}
-function closeEditClass() {
-  document.getElementById('modal-edit-class').style.display = 'none';
-  currentClassId = null;
-  currentClass = null;
-}
-function renderStudentsInEditor() {
-  const list = document.getElementById('edit-students-list');
-  const countEl = document.getElementById('edit-students-count');
-  const students = (currentClass && currentClass.students) || [];
-  countEl.textContent = students.length;
-  if (!students.length) {
-    list.innerHTML = `<div class="empty-questions"><div class="empty-icon-small">👥</div><div>Пока нет учеников</div></div>`;
-    return;
-  }
-  list.innerHTML = '';
-  students.forEach((s, idx) => {
-    const row = document.createElement('div');
-    row.className = 'student-row';
-    row.innerHTML = `
-      <div class="student-num">${idx + 1}</div>
-      <div class="student-name">${escapeHtml(s.full_name)}</div>
-      <div class="student-actions">
-        <button class="student-action-btn" onclick="editStudentName(${s.id})">✏️</button>
-        <button class="student-action-btn delete" onclick="deleteStudentInline(${s.id})">🗑</button>
-      </div>
-    `;
-    list.appendChild(row);
-  });
-}
-async function editStudentName(id) {
-  const student = currentClass.students.find(s => s.id === id);
-  if (!student) return;
-  const newName = prompt('Новое имя:', student.full_name);
-  if (!newName || !newName.trim()) return;
-  if (!newName.includes(' ')) { showToast('Формат: Фамилия Имя', 'error'); return; }
-  await window.api.updateStudent(id, newName.trim());
-  currentClass = await window.api.getClass(currentClassId);
-  renderStudentsInEditor();
-  renderClasses();
-}
-async function deleteStudentInline(id) {
-  if (!confirm('Удалить ученика?')) return;
-  await window.api.deleteStudent(id);
-  currentClass = await window.api.getClass(currentClassId);
-  renderStudentsInEditor();
-  renderClasses();
-}
-async function saveClassChanges() {
-  if (!currentClassId) return;
-  const data = {
-    title: document.getElementById('edit-class-title').value.trim(),
-    description: document.getElementById('edit-class-desc').value.trim()
-  };
-  if (!data.title) { showToast('Название не может быть пустым', 'error'); return; }
-  await window.api.updateClass(currentClassId, data);
-  showToast('Сохранено!', 'success');
-  currentClass = await window.api.getClass(currentClassId);
-  document.getElementById('edit-class-title-header').textContent = '📚 ' + currentClass.title;
-  renderClasses();
-}
-async function deleteCurrentClass() {
-  if (!currentClassId) return;
-  if (!confirm('Удалить класс?')) return;
-  await window.api.deleteClass(currentClassId);
-  closeEditClass();
-  renderClasses();
-}
-function openAddStudents() {
-  document.getElementById('bulk-students-text').value = '';
-  document.getElementById('modal-add-students').style.display = 'flex';
-}
-function closeAddStudents() { document.getElementById('modal-add-students').style.display = 'none'; }
-async function confirmAddStudents() {
-  const text = document.getElementById('bulk-students-text').value;
-  if (!text.trim()) { showToast('Введи хотя бы одного', 'error'); return; }
-  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-  const bad = lines.filter(l => !l.includes(' '));
-  if (bad.length) { showToast('Каждое имя — «Фамилия Имя»', 'error'); return; }
-  const result = await window.api.addStudentsBulk(currentClassId, text);
-  closeAddStudents();
-  showToast(`Добавлено ${result.count} учеников`, 'success');
-  currentClass = await window.api.getClass(currentClassId);
-  renderStudentsInEditor();
-  renderClasses();
-}
-
-// ============================================
-// ИСТОРИЯ
-// ============================================
-async function renderHistory() {
-  const list = document.getElementById('history-list');
-  try {
-    const lessons = await window.api.listLessons(50);
-    if (!lessons.length) {
-      list.innerHTML = `<div class="empty-state"><div class="empty-icon">📊</div><div class="empty-title">Пока нет уроков</div></div>`;
-      return;
-    }
-    list.innerHTML = '';
-    lessons.forEach(l => {
-      const item = document.createElement('div');
-      item.className = 'history-item';
-      const date = new Date(l.started_at).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-      item.innerHTML = `
-        <div class="history-date">${date}</div>
-        <div class="history-title">${escapeHtml(l.title || 'Урок')}${l.class_title ? ' · ' + escapeHtml(l.class_title) : ''}</div>
-        <div class="history-stats"><span class="green">✅ ${l.total_answers || 0}</span></div>
-      `;
-      list.appendChild(item);
-    });
-  } catch (e) { console.error(e); }
-}
-
-// ============================================
-// НАСТРОЙКИ
-// ============================================
-async function loadSettings() {
-  try {
-    const s = await window.api.getAllSettings();
-    document.getElementById('set-theme').checked = s.theme === 'light';
-  } catch (e) {}
-}
-async function saveSetting(key, value) { await window.api.setSetting(key, value); }
-function toggleTheme(isLight) {
-  document.body.classList.toggle('light', isLight);
-  saveSetting('theme', isLight ? 'light' : 'dark');
+if (localStorage.getItem('theme') === 'light') {
+  document.body.classList.add('light');
+  const el = document.getElementById('set-theme');
+  if (el) el.checked = true;
 }
 
 // ============================================
 // УТИЛИТЫ
 // ============================================
 function escapeHtml(s) {
-  return String(s || '').replace(/[&<>"']/g, ch => ({
-    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
-  }[ch]));
-}
-function showToast(text, type) {
-  let container = document.querySelector('.toast-container');
-  if (!container) {
-    container = document.createElement('div');
-    container.className = 'toast-container';
-    document.body.appendChild(container);
-  }
-  const toast = document.createElement('div');
-  toast.className = 'toast' + (type ? ' ' + type : '');
-  toast.textContent = text;
-  container.appendChild(toast);
-  setTimeout(() => {
-    toast.style.opacity = '0';
-    toast.style.transition = 'opacity .3s';
-    setTimeout(() => toast.remove(), 300);
-  }, 2500);
+  if (!s) return '';
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
 }
 
 // ============================================
-// СОБЫТИЯ
+// ЗАКРЫТИЕ МОДАЛОК ПО ESC
 // ============================================
-window.api.onFlaskStatus((data) => { flaskRunning = data.running; });
-window.api.onCloudpubStatus((data) => {});
-
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
-    const modals = ['modal-create-material', 'modal-edit-material', 'modal-edit-question',
-                    'modal-pick-material', 'modal-pick-class', 'modal-create-class',
-                    'modal-edit-class', 'modal-add-students', 'modal-theory-note', 'modal-theory-link',
-                    'modal-cloudpub-setup', 'modal-cloudpub-manage', 'modal-help'];
-    for (const m of modals) {
-      const el = document.getElementById(m);
-      if (el && el.style.display === 'flex') { el.style.display = 'none'; return; }
-    }
+    document.querySelectorAll('.modal').forEach(m => m.style.display = 'none');
   }
 });
 
-window.addEventListener('DOMContentLoaded', async () => {
-  const check = await window.api.checkFlask();
-  if (check.running) {
-    flaskRunning = true;
-    setStatus('Flask уже запущен', 'Можно проводить урок', 'running');
-    setButton('btn-teacher', false);
-    setButton('btn-stop', false);
-    cloudpubUrl = await window.api.getCloudpubUrl();
-    document.getElementById('link-url').textContent = cloudpubUrl;
-    document.getElementById('link-box').style.display = 'flex';
-  }
-  checkCloudpubOnStart();
-  renderMaterials();
-  renderClasses();
-  renderLessonMaterial();
-  renderLessonClass();
-  const s = await window.api.getAllSettings();
-  if (s.theme === 'light') {
-    document.body.classList.add('light');
-    const el = document.getElementById('set-theme');
-    if (el) el.checked = true;
+// Закрытие модалок по клику на фон
+document.addEventListener('click', (e) => {
+  if (e.target.classList.contains('modal')) {
+    e.target.style.display = 'none';
   }
 });

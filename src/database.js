@@ -6,11 +6,11 @@ const path = require('path');
 const fs = require('fs');
 const Database = require('better-sqlite3');
 
-// В продакшене (когда приложение упаковано в .exe) — данные в AppData
+// В продакшене (когда приложение упаковано в .exe) — данные в AppData\Lumen
 // В разработке (npm start) — рядом с проектом
 const isPackaged = __dirname.includes('app.asar');
 const DATA_DIR = isPackaged
-  ? path.join(process.env.APPDATA || process.env.HOME || '.', 'BrainDetector')
+  ? path.join(process.env.APPDATA || process.env.HOME || '.', 'Lumen')
   : path.join(__dirname, '..', 'data');
 
 if (!fs.existsSync(DATA_DIR)) {
@@ -23,6 +23,10 @@ if (!fs.existsSync(FILES_DIR)) {
 }
 
 const DB_PATH = path.join(DATA_DIR, 'app.db');
+
+console.log('[DB] DATA_DIR =', DATA_DIR);
+console.log('[DB] DB_PATH =', DB_PATH);
+console.log('[DB] FILES_DIR =', FILES_DIR);
 
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
@@ -135,7 +139,7 @@ db.exec(`
 function listMaterials() {
   return db.prepare(`
     SELECT m.*,
-      (SELECT COUNT(*) FROM questions q WHERE q.material_id = m.id) AS question_count,
+      (SELECT COUNT(*) FROM questions q WHERE q.material_id = m.id) AS questions_count,
       (SELECT COUNT(*) FROM theory_items t WHERE t.material_id = m.id) AS theory_count
     FROM materials m
     ORDER BY m.favorite DESC, m.updated_at DESC
@@ -225,10 +229,15 @@ function createQuestion(materialId, data) {
       (material_id, position, text, mode, timer, keywords, quiz_options, quiz_correct, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
-    materialId, maxPos + 1, data.text || '', data.mode || 'buttons',
-    data.timer || 0, data.keywords || '',
+    materialId,
+    maxPos + 1,
+    data.text || '',
+    data.mode || 'buttons',
+    data.timer || 0,
+    typeof data.keywords === 'string' ? data.keywords : (Array.isArray(data.keywords) ? data.keywords.join(', ') : ''),
     JSON.stringify(data.quiz_options || []),
-    data.quiz_correct ?? null, now
+    data.quiz_correct ?? null,
+    now
   );
   return db.prepare('SELECT * FROM questions WHERE id = ?').get(info.lastInsertRowid);
 }
@@ -239,8 +248,12 @@ function updateQuestion(id, data) {
   db.prepare(`
     UPDATE questions SET text=?, mode=?, timer=?, keywords=?, quiz_options=?, quiz_correct=? WHERE id=?
   `).run(
-    data.text ?? q.text, data.mode ?? q.mode, data.timer ?? q.timer,
-    data.keywords ?? q.keywords,
+    data.text ?? q.text,
+    data.mode ?? q.mode,
+    data.timer ?? q.timer,
+    data.keywords !== undefined
+      ? (typeof data.keywords === 'string' ? data.keywords : (Array.isArray(data.keywords) ? data.keywords.join(', ') : q.keywords))
+      : q.keywords,
     JSON.stringify(data.quiz_options ?? JSON.parse(q.quiz_options || '[]')),
     data.quiz_correct !== undefined ? data.quiz_correct : q.quiz_correct,
     id
@@ -292,7 +305,8 @@ function createTheoryFile(materialId, data) {
     'SELECT COALESCE(MAX(position), -1) AS p FROM theory_items WHERE material_id = ?'
   ).get(materialId).p;
 
-  const ext = path.extname(data.original_name || '');
+  const originalName = data.original_name || '';
+  const ext = path.extname(originalName);
   const savedName = `mat${materialId}_${now}${ext}`;
   const destPath = path.join(FILES_DIR, savedName);
 
@@ -315,11 +329,12 @@ function createTheoryFile(materialId, data) {
     INSERT INTO theory_items (material_id, position, type, title, content, original_name, size, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
-    materialId, maxPos + 1,
+    materialId,
+    maxPos + 1,
     data.type || 'file',
-    data.title || data.original_name || 'Файл',
+    data.title || originalName || 'Файл',
     savedName,
-    data.original_name || '',
+    originalName,
     size,
     now
   );
