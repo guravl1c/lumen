@@ -59,7 +59,7 @@ contextBridge.exposeInMainWorld('api', {
   updateQuestion: (id, data) => ipcRenderer.invoke('questions:update', id, data),
   deleteQuestion: (id) => ipcRenderer.invoke('questions:delete', id),
 
-  // ÒÅÎÐÈß
+  // Òåîðèÿ
   listTheory: (materialId) => ipcRenderer.invoke('theory:list', materialId),
   createTheoryNote: (materialId, data) => ipcRenderer.invoke('theory:createNote', materialId, data),
   createTheoryLink: (materialId, data) => ipcRenderer.invoke('theory:createLink', materialId, data),

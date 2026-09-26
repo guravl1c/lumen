@@ -16,15 +16,13 @@ const APP_EXE = path.join(BIN_DIR, 'app.exe');
 const CLO_PATH = path.join(BIN_DIR, 'clo.exe');
 const NGROK_PATH = path.join(BIN_DIR, 'ngrok.exe');
 
-const CLOUDPUB_URL = 'https://huskily-compelling-primate.cloudpub.ru';
-
 console.log('[Пути] BIN_DIR =', BIN_DIR);
 console.log('[Пути] APP_EXE =', APP_EXE, fs.existsSync(APP_EXE) ? '✓' : '✗');
 console.log('[Пути] CLO_PATH =', CLO_PATH, fs.existsSync(CLO_PATH) ? '✓' : '✗');
 console.log('[Пути] NGROK_PATH =', NGROK_PATH, fs.existsSync(NGROK_PATH) ? '✓' : '✗');
 
 // ============================================
-// ПРОЦЕССЫ
+// СОСТОЯНИЕ
 // ============================================
 let mainWindow = null;
 let teacherWindow = null;
@@ -35,6 +33,12 @@ let ngrokProcess = null;
 let currentLessonMaterial = null;
 let currentLessonClass = null;
 
+// CloudPub URL — определяется динамически из вывода clo.exe
+let currentCloudpubUrl = null;
+
+// ============================================
+// ОКНО
+// ============================================
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400, height: 900, minWidth: 1000, minHeight: 700,
@@ -98,7 +102,6 @@ function killFlaskTree() {
 // FLASK — запуск/остановка
 // ============================================
 function startFlask() {
-  // Сначала убиваем всех, кто занял порт 5000
   killProcessOnPort5000();
 
   if (flaskProcess) return { ok: false, msg: 'Flask уже запущен' };
@@ -124,6 +127,7 @@ function startFlask() {
         setTimeout(async () => {
           if (currentLessonMaterial) await sendMaterialToFlask();
           if (currentLessonClass) await sendClassToFlask();
+          if (currentCloudpubUrl) await postJSON('/api/set-cloudpub-url', { url: currentCloudpubUrl });
         }, 500);
       }
     });
@@ -235,25 +239,19 @@ function loginCloudpub(email, password) {
     if (!email || !password) {
       return resolve({ ok: false, msg: 'Введите email и пароль' });
     }
-
     console.log('[CloudPub] Логин для', email);
-
     const proc = spawn(CLO_PATH, ['login', email, password], {
       cwd: path.dirname(CLO_PATH),
       windowsHide: true
     });
-
     let output = '';
     let errOutput = '';
     proc.stdout.on('data', (d) => { output += d.toString(); });
     proc.stderr.on('data', (d) => { errOutput += d.toString(); });
-
     proc.on('close', (code) => {
       const combined = output + errOutput;
       console.log('[CloudPub] Ответ:', combined);
-
       const success = code === 0 && !combined.toLowerCase().includes('error') && !combined.toLowerCase().includes('invalid');
-
       if (success) {
         resolve({ ok: true, msg: 'Успешный вход' });
       } else {
@@ -285,6 +283,7 @@ function logoutCloudpub() {
     proc.stderr.on('data', (d) => { output += d.toString(); });
     proc.on('close', () => {
       console.log('[CloudPub] Logout:', output);
+      currentCloudpubUrl = null;
       resolve({ ok: true });
     });
     proc.on('error', () => resolve({ ok: false }));
@@ -293,7 +292,7 @@ function logoutCloudpub() {
 }
 
 // ============================================
-// CLOUDPUB — ТУННЕЛЬ
+// CLOUDPUB — ТУННЕЛЬ (динамический URL)
 // ============================================
 function startCloudpub() {
   if (cloudpubProcess) return { ok: false };
@@ -306,23 +305,57 @@ function startCloudpub() {
       cwd: path.dirname(CLO_PATH),
       windowsHide: true
     });
-    cloudpubProcess.stdout.on('data', (d) => console.log('[CloudPub]', d.toString().trim()));
-    cloudpubProcess.stderr.on('data', (d) => console.log('[CloudPub err]', d.toString().trim()));
+
+    // Перехватываем stdout и stderr — ищем URL CloudPub
+    const handleOutput = (data) => {
+      const text = data.toString();
+      console.log('[CloudPub]', text.trim());
+
+      // Ищем URL вида https://xxx.cloudpub.ru (без порта, чтобы был чистый)
+      const match = text.match(/https:\/\/[a-z0-9-]+\.cloudpub\.ru/i);
+      if (match) {
+        // Убираем :443, :80 и т.п. из конца
+        const cleanUrl = match[0].replace(/:\d+$/, '');
+        if (cleanUrl !== currentCloudpubUrl) {
+          currentCloudpubUrl = cleanUrl;
+          console.log('[CloudPub] Найден URL:', currentCloudpubUrl);
+
+          // Отправляем в renderer
+          if (mainWindow) {
+            mainWindow.webContents.send('cloudpub-status', {
+              running: true,
+              url: currentCloudpubUrl
+            });
+          }
+
+          // Отправляем в Flask
+          postJSON('/api/set-cloudpub-url', { url: currentCloudpubUrl });
+        }
+      }
+    };
+
+    cloudpubProcess.stdout.on('data', handleOutput);
+    cloudpubProcess.stderr.on('data', handleOutput);
+
     cloudpubProcess.on('close', (code) => {
       console.log('[CloudPub] код', code);
       cloudpubProcess = null;
+      currentCloudpubUrl = null;
       if (mainWindow) mainWindow.webContents.send('cloudpub-status', { running: false });
     });
-    setTimeout(() => {
-      if (mainWindow) mainWindow.webContents.send('cloudpub-status', { running: true, url: CLOUDPUB_URL });
-    }, 3000);
+
     return { ok: true };
   } catch (e) { return { ok: false }; }
 }
 
 function stopCloudpub() {
   if (!cloudpubProcess) return { ok: false };
-  try { cloudpubProcess.kill(); cloudpubProcess = null; return { ok: true }; }
+  try {
+    cloudpubProcess.kill();
+    cloudpubProcess = null;
+    currentCloudpubUrl = null;
+    return { ok: true };
+  }
   catch (e) { return { ok: false }; }
 }
 
@@ -343,7 +376,6 @@ function startNgrok() {
     return { ok: true };
   } catch (e) { return { ok: false }; }
 }
-
 function stopNgrok() {
   if (!ngrokProcess) return { ok: false };
   try { ngrokProcess.kill(); ngrokProcess = null; return { ok: true }; }
@@ -351,7 +383,7 @@ function stopNgrok() {
 }
 
 // ============================================
-// IPC — CLOUDPUB АВТОРИЗАЦИЯ
+// IPC — CLOUDPUB
 // ============================================
 ipcMain.handle('cloudpub:check', () => checkCloudpubAuth());
 ipcMain.handle('cloudpub:login', (e, email, password) => loginCloudpub(email, password));
@@ -367,7 +399,7 @@ ipcMain.handle('start-cloudpub', () => startCloudpub());
 ipcMain.handle('stop-cloudpub', () => stopCloudpub());
 ipcMain.handle('start-ngrok', () => startNgrok());
 ipcMain.handle('stop-ngrok', () => stopNgrok());
-ipcMain.handle('get-cloudpub-url', () => CLOUDPUB_URL);
+ipcMain.handle('get-cloudpub-url', () => currentCloudpubUrl || '');
 ipcMain.handle('open-external', (e, url) => shell.openExternal(url));
 
 // ============================================
@@ -541,11 +573,9 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  // Убиваем всё дерево процессов
   killFlaskTree();
   if (cloudpubProcess) { try { cloudpubProcess.kill(); } catch(e){} cloudpubProcess = null; }
   if (ngrokProcess) { try { ngrokProcess.kill(); } catch(e){} ngrokProcess = null; }
-  // Дополнительно — на всякий случай убиваем всё, что осталось на порту 5000
   killProcessOnPort5000();
   if (process.platform !== 'darwin') app.quit();
 });
