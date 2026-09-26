@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const { spawn, execSync } = require('child_process');
 const http = require('http');
+const { autoUpdater } = require('electron-updater');
 const db = require('./src/database');
 
 // ============================================
@@ -57,6 +58,37 @@ function createWindow() {
     return { action: 'deny' };
   });
   mainWindow.on('closed', () => { mainWindow = null; });
+}
+
+// ============================================
+// АВТООБНОВЛЕНИЯ
+// ============================================
+function setupAutoUpdater() {
+  // Логирование
+  autoUpdater.on('checking-for-update', () => console.log('[Update] Проверка...'));
+  autoUpdater.on('update-available', (info) => console.log('[Update] Доступно:', info.version));
+  autoUpdater.on('update-not-available', () => console.log('[Update] Нет обновлений'));
+  autoUpdater.on('error', (err) => console.error('[Update] Ошибка:', err));
+  autoUpdater.on('download-progress', (p) => {
+    console.log(`[Update] Загрузка: ${Math.round(p.percent)}% (${Math.round(p.bytesPerSecond / 1024)} KB/s)`);
+  });
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('[Update] Скачано:', info.version, '. Установится при перезапуске.');
+  });
+
+  // Проверка через 5 секунд после старта
+  setTimeout(() => {
+    autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+      console.log('[Update] Ошибка проверки:', err.message);
+    });
+  }, 5000);
+
+  // Проверять каждые 2 часа
+  setInterval(() => {
+    autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+      console.log('[Update] Ошибка проверки:', err.message);
+    });
+  }, 2 * 60 * 60 * 1000);
 }
 
 // ============================================
@@ -306,21 +338,17 @@ function startCloudpub() {
       windowsHide: true
     });
 
-    // Перехватываем stdout и stderr — ищем URL CloudPub
     const handleOutput = (data) => {
       const text = data.toString();
       console.log('[CloudPub]', text.trim());
 
-      // Ищем URL вида https://xxx.cloudpub.ru (без порта, чтобы был чистый)
       const match = text.match(/https:\/\/[a-z0-9-]+\.cloudpub\.ru/i);
       if (match) {
-        // Убираем :443, :80 и т.п. из конца
         const cleanUrl = match[0].replace(/:\d+$/, '');
         if (cleanUrl !== currentCloudpubUrl) {
           currentCloudpubUrl = cleanUrl;
           console.log('[CloudPub] Найден URL:', currentCloudpubUrl);
 
-          // Отправляем в renderer
           if (mainWindow) {
             mainWindow.webContents.send('cloudpub-status', {
               running: true,
@@ -328,7 +356,6 @@ function startCloudpub() {
             });
           }
 
-          // Отправляем в Flask
           postJSON('/api/set-cloudpub-url', { url: currentCloudpubUrl });
         }
       }
@@ -401,6 +428,20 @@ ipcMain.handle('start-ngrok', () => startNgrok());
 ipcMain.handle('stop-ngrok', () => stopNgrok());
 ipcMain.handle('get-cloudpub-url', () => currentCloudpubUrl || '');
 ipcMain.handle('open-external', (e, url) => shell.openExternal(url));
+
+// ============================================
+// IPC — АВТООБНОВЛЕНИЯ
+// ============================================
+ipcMain.handle('check-for-updates', async () => {
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    return { ok: true, version: result?.updateInfo?.version };
+  } catch (e) {
+    return { ok: false, msg: e.message };
+  }
+});
+
+ipcMain.handle('get-app-version', () => app.getVersion());
 
 // ============================================
 // IPC — МАТЕРИАЛ УРОКА
@@ -567,6 +608,8 @@ ipcMain.handle('is-teacher-open', () => {
 // ============================================
 app.whenReady().then(() => {
   createWindow();
+  setupAutoUpdater();
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

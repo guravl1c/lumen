@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Lumen — Illuminate understanding. Real-time formative assessment for teachers.",
   "main": "main.js",
-  "author": "guravlic",
+  "author": "Андрей",
   "license": "MIT",
   "type": "commonjs",
   "scripts": {
@@ -15,14 +15,15 @@
     "electron-builder": "^25.1.8"
   },
   "dependencies": {
-    "better-sqlite3": "^13.0.3"
+    "better-sqlite3": "^13.0.3",
+    "electron-updater": "^6.3.9"
   },
   "build": {
     "appId": "com.lumen.desktop",
     "nodeGypRebuild": false,
     "npmRebuild": false,
     "productName": "Lumen",
-    "copyright": "© 2026 guravlic",
+    "copyright": "© 2026 Андрей",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -34,7 +35,8 @@
       "src/**/*",
       "bin/**/*",
       "node_modules/better-sqlite3/**/*",
-      "node_modules/node-addon-api/**/*"
+      "node_modules/node-addon-api/**/*",
+      "node_modules/electron-updater/**/*"
     ],
     "asarUnpack": [
       "node_modules/better-sqlite3/**/*",
@@ -63,6 +65,12 @@
       "uninstallerIcon": "build/icon.ico",
       "installerHeaderIcon": "build/icon.ico",
       "deleteAppDataOnUninstall": false
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "guravl1c",
+      "repo": "lumen",
+      "releaseType": "release"
     }
   }
 }

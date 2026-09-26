@@ -25,6 +25,10 @@ contextBridge.exposeInMainWorld('api', {
   openTeacher: () => ipcRenderer.invoke('open-teacher'),
   isTeacherOpen: () => ipcRenderer.invoke('is-teacher-open'),
 
+  // јвтообновлени€
+  checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+
   // ”рок Ч материал
   setLessonMaterial: (id) => ipcRenderer.invoke('set-lesson-material', id),
   getLessonMaterial: () => ipcRenderer.invoke('get-lesson-material'),
