@@ -131,6 +131,19 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_students_class ON students(class_id);
   CREATE INDEX IF NOT EXISTS idx_answers_lesson ON answers(lesson_id);
   CREATE INDEX IF NOT EXISTS idx_lessons_started ON lessons(started_at DESC);
+    CREATE TABLE IF NOT EXISTS grades (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    lesson_id INTEGER,
+    student_name TEXT NOT NULL,
+    activity INTEGER,
+    test INTEGER,
+    itog INTEGER,
+    journal INTEGER,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (lesson_id) REFERENCES lessons(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_grades_lesson ON grades(lesson_id);
 `);
 
 // ============================================
@@ -557,6 +570,70 @@ function getAllSettings() {
 // ============================================
 // ЭКСПОРТ
 // ============================================
+// ============================================
+// ОЦЕНКИ
+// ============================================
+function saveGrade(lessonId, studentName, grades) {
+  // Удаляем старую запись для этого ученика и урока
+  db.prepare('DELETE FROM grades WHERE lesson_id = ? AND student_name = ?')
+    .run(lessonId, studentName);
+  const info = db.prepare(`
+    INSERT INTO grades (lesson_id, student_name, activity, test, itog, journal, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    lessonId,
+    studentName,
+    grades.activity ?? null,
+    grades.test ?? null,
+    grades.itog ?? null,
+    grades.journal ?? null,
+    Date.now()
+  );
+  return { ok: true, id: info.lastInsertRowid };
+}
+
+function saveGradesBulk(lessonId, gradesMap) {
+  // gradesMap = { "иванов петр": { activity: 5, test: 4, itog: 5, journal: 5 }, ... }
+  const transaction = db.transaction(() => {
+    // Удаляем старые для этого урока
+    db.prepare('DELETE FROM grades WHERE lesson_id = ?').run(lessonId);
+    // Вставляем новые
+    for (const [studentName, grades] of Object.entries(gradesMap)) {
+      db.prepare(`
+        INSERT INTO grades (lesson_id, student_name, activity, test, itog, journal, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        lessonId,
+        studentName,
+        grades.activity ?? null,
+        grades.test ?? null,
+        grades.itog ?? null,
+        grades.journal ?? null,
+        Date.now()
+      );
+    }
+  });
+  transaction();
+  return { ok: true };
+}
+
+function getGradesForLesson(lessonId) {
+  return db.prepare('SELECT * FROM grades WHERE lesson_id = ? ORDER BY student_name').all(lessonId);
+}
+
+function getGradesForStudent(studentName, limit = 20) {
+  return db.prepare(`
+    SELECT g.*, l.started_at, l.title AS lesson_title,
+           m.title AS material_title, c.title AS class_title
+    FROM grades g
+    LEFT JOIN lessons l ON l.id = g.lesson_id
+    LEFT JOIN materials m ON m.id = l.material_id
+    LEFT JOIN classes c ON c.id = l.class_id
+    WHERE LOWER(g.student_name) = LOWER(?)
+    ORDER BY g.created_at DESC
+    LIMIT ?
+  `).all(studentName, limit);
+}
 module.exports = {
   listMaterials, getMaterial, createMaterial, updateMaterial, deleteMaterial, toggleFavorite,
   createQuestion, updateQuestion, deleteQuestion,
@@ -564,6 +641,6 @@ module.exports = {
   listClasses, getClass, createClass, updateClass, deleteClass,
   addStudentToClass, addStudentsBulk, deleteStudent, updateStudent,
   createLesson, finishLesson, listLessons, getLesson, saveAnswer, deleteLesson,
-  getSetting, setSetting, getAllSettings,
+  getSetting, setSetting, getAllSettings, saveGrade, saveGradesBulk, getGradesForLesson, getGradesForStudent,
   db, DB_PATH, FILES_DIR
 };

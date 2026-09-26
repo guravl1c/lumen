@@ -25,6 +25,27 @@ let currentStudents = [];
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('[Lumen] renderer loaded');
 
+  // Показать подсказку при первом запуске
+  const hasSeenTip = localStorage.getItem('lumen_tip_shown_v1_2_0');
+  if (!hasSeenTip) {
+    setTimeout(() => {
+       showModal({
+         title: '👋 Добро пожаловать в Lumen',
+         content: `Если поле ввода иногда не реагирует на клик — просто перезайдите в раздел или перезапустите окно. Это редкий баг, мы работаем над его устранением.`,
+         buttons: [
+           {
+             label: 'Понятно',
+             class: 'primary',
+             onClick: () => {
+               window.closeModal();
+               localStorage.setItem('lumen_tip_shown_v1_2_0', '1');
+             },
+           },
+         ],
+       });
+     }, 2000);  // через 2 секунды после запуска
+  }
+
   // Версия в бейдже и в About
   await updateAppVersion();
 
@@ -93,15 +114,15 @@ async function checkUpdatesManual() {
     if (result.ok) {
       const current = await window.api.getAppVersion();
       if (result.version && result.version !== current) {
-        alert(`✅ Доступна новая версия: ${result.version}\n\nОна скачается в фоне и установится при следующем запуске.`);
+        showToast(`✅ Доступна новая версия: ${result.version}\n\nОна скачается в фоне и установится при следующем запуске.`);
       } else {
-        alert(`✅ У вас последняя версия: ${current}`);
+        showToast(`✅ У вас последняя версия: ${current}`);
       }
     } else {
-      alert('❌ Не удалось проверить обновления:\n' + (result.msg || 'неизвестная ошибка'));
+      showToast('❌ Не удалось проверить обновления:\n' + (result.msg || 'неизвестная ошибка'));
     }
   } catch (e) {
-    alert('❌ Ошибка: ' + e.message);
+    showToast('❌ Ошибка: ' + e.message);
   }
 }
 
@@ -112,10 +133,10 @@ async function openLogsFolder() {
   try {
     const result = await window.api.openLogsFolder();
     if (!result.ok) {
-      alert('Не удалось открыть папку логов');
+      showToast('Не удалось открыть папку логов');
     }
   } catch (e) {
-    alert('Ошибка: ' + e.message);
+    showToast('Ошибка: ' + e.message);
   }
 }
 
@@ -123,10 +144,10 @@ async function openLogFile() {
   try {
     const result = await window.api.openLogFile();
     if (!result.ok) {
-      alert('Не удалось открыть файл лога');
+      showToast('Не удалось открыть файл лога');
     }
   } catch (e) {
-    alert('Ошибка: ' + e.message);
+    showToast('Ошибка: ' + e.message);
   }
 }
 
@@ -194,7 +215,7 @@ async function startAll() {
   try {
     const result = await window.api.startFlask();
     if (!result.ok) {
-      alert('Ошибка запуска Flask: ' + result.msg);
+      showToast('Ошибка запуска Flask: ' + result.msg);
       if (btn) {
         btn.disabled = false;
         btn.textContent = '▶️ Запустить приложение';
@@ -220,7 +241,7 @@ async function startAll() {
     setFlaskStatus(true);
     updateLinkBox();
   } catch (e) {
-    alert('Ошибка: ' + e.message);
+    showToast('Ошибка: ' + e.message);
     if (btn) {
       btn.disabled = false;
       btn.textContent = '▶️ Запустить приложение';
@@ -234,7 +255,7 @@ async function stopAll() {
     await window.api.stopFlask();
     setFlaskStatus(false);
   } catch (e) {
-    alert('Ошибка остановки: ' + e.message);
+    showToast('Ошибка остановки: ' + e.message);
   }
 }
 
@@ -261,7 +282,7 @@ function copyLink() {
   const url = document.getElementById('link-url');
   if (!url) return;
   navigator.clipboard.writeText(url.textContent).then(() => {
-    alert('Скопировано: ' + url.textContent);
+    showToast('Скопировано: ' + url.textContent);
   }).catch(() => {
     prompt('Скопируй вручную:', url.textContent);
   });
@@ -309,7 +330,7 @@ async function pickClass(id) {
     updateLessonClassUI();
     closeClassPicker();
   } else {
-    alert('Ошибка: ' + result.msg);
+    showToast('Ошибка: ' + result.msg);
   }
 }
 
@@ -365,7 +386,7 @@ async function pickMaterial(id) {
     updateLessonMaterialUI();
     closeMaterialPicker();
   } else {
-    alert('Ошибка: ' + result.msg);
+    showToast('Ошибка: ' + result.msg);
   }
 }
 
@@ -394,6 +415,26 @@ async function clearLessonMaterial() {
 // ============================================
 // МАТЕРИАЛЫ
 // ============================================
+async function deleteMaterialFromList(id) {
+  showModal({
+    title: '🗑 Удалить материал?',
+    content: 'Материал будет удалён вместе со всеми вопросами и теорией. Это действие нельзя отменить.',
+    buttons: [
+      { label: 'Отмена', action: 'close' },
+      {
+        label: 'Удалить',
+        class: 'primary',
+        onClick: async () => {
+          window.closeModal();
+          await window.api.deleteMaterial(id);
+          await refreshMaterials();
+          showToast('Материал удалён', 'success');
+        },
+      },
+    ],
+  });
+}
+window.deleteMaterialFromList = deleteMaterialFromList;
 async function refreshMaterials() {
   const list = document.getElementById('materials-list');
   if (!list) return;
@@ -418,10 +459,14 @@ async function refreshMaterials() {
         <div class="material-stats">
           <span class="material-badge">${m.questions_count || 0} вопр.</span>
         </div>
+        <div class="material-actions">
+          <button class="btn-icon delete" onclick="event.stopPropagation(); deleteMaterialFromList(${m.id})" title="Удалить">🗑</button>
+        </div>
       </div>
     `).join('');
   }
 }
+ 
 
 function createMaterial() {
   document.getElementById('new-material-title').value = '';
@@ -438,7 +483,7 @@ function closeCreateModal() {
 async function confirmCreateMaterial() {
   const title = document.getElementById('new-material-title').value.trim();
   if (!title) {
-    alert('Введите название');
+    showToast('Введите название');
     return;
   }
   const data = {
@@ -453,14 +498,14 @@ async function confirmCreateMaterial() {
     await refreshMaterials();
     await openEditMaterial(result.id);
   } else {
-    alert('Ошибка создания материала');
+    showToast('Ошибка создания материала');
   }
 }
 
 async function openEditMaterial(id) {
   const material = await window.api.getMaterial(id);
   if (!material) {
-    alert('Материал не найден');
+    showToast('Материал не найден');
     return;
   }
   currentMaterialForEdit = material;
@@ -507,19 +552,34 @@ async function saveMaterialChanges() {
     show_theory_to_students: document.getElementById('edit-material-show-theory').checked,
   };
   if (!data.title) {
-    alert('Введите название');
+    showToast('Введите название');
     return;
   }
   await window.api.updateMaterial(currentMaterialForEdit.id, data);
-  alert('Сохранено');
+  showToast('Сохранено');
   closeEditMaterial();
 }
 
 async function deleteCurrentMaterial() {
   if (!currentMaterialForEdit) return;
-  if (!confirm('Удалить материал «' + currentMaterialForEdit.title + '»?')) return;
-  await window.api.deleteMaterial(currentMaterialForEdit.id);
-  closeEditMaterial();
+  const materialName = currentMaterialForEdit.title;
+  showModal({
+    title: '🗑 Удалить материал?',
+    content: 'Материал «' + materialName + '» будет удалён вместе со всеми вопросами и теорией. Это действие нельзя отменить.',
+    buttons: [
+      { label: 'Отмена', action: 'close' },
+      {
+        label: 'Удалить',
+        class: 'primary',
+        onClick: async () => {
+          window.closeModal();
+          await window.api.deleteMaterial(currentMaterialForEdit.id);
+          closeEditMaterial();
+          showToast('Материал удалён', 'success');
+        },
+      },
+    ],
+  });
 }
 
 // ============================================
@@ -617,7 +677,7 @@ function closeQuestionModal() {
 
 async function confirmQuestion() {
   const text = document.getElementById('q-text').value.trim();
-  if (!text) { alert('Введите текст вопроса'); return; }
+  if (!text) { showToast('Введите текст вопроса'); return; }
   if (!currentMaterialForEdit) return;
 
   const data = {
@@ -647,11 +707,25 @@ async function confirmQuestion() {
 }
 
 async function deleteQuestion(id) {
-  if (!confirm('Удалить вопрос?')) return;
-  await window.api.deleteQuestion(id);
-  const material = await window.api.getMaterial(currentMaterialForEdit.id);
-  currentQuestions = material.questions || [];
-  renderEditQuestions();
+  showModal({
+    title: '🗑 Удалить вопрос?',
+    content: 'Вопрос будет удалён из материала. Это действие нельзя отменить.',
+    buttons: [
+      { label: 'Отмена', action: 'close' },
+      {
+        label: 'Удалить',
+        class: 'primary',
+        onClick: async () => {
+          window.closeModal();
+          await window.api.deleteQuestion(id);
+          const material = await window.api.getMaterial(currentMaterialForEdit.id);
+          currentQuestions = material.questions || [];
+          renderEditQuestions();
+          showToast('Вопрос удалён', 'success');
+        },
+      },
+    ],
+  });
 }
 
 // ============================================
@@ -678,17 +752,18 @@ async function refreshTheory() {
   }
 
   list.innerHTML = theory.map(t => `
-    <div class="theory-item">
-      <div class="theory-item-icon">${theoryIcon(t.type)}</div>
-      <div class="theory-item-content">
-        <div class="theory-item-title">${escapeHtml(t.title || '')}</div>
-        ${t.type === 'note' ? '<div class="theory-item-sub">' + escapeHtml((t.content || '').slice(0, 100)) + '</div>' : ''}
-        ${t.type === 'link' ? '<div class="theory-item-sub">' + escapeHtml(t.url || '') + '</div>' : ''}
-      </div>
-      <div class="theory-item-actions">
-        ${t.type === 'file' || t.type === 'image' ? `<button class="btn-small" onclick="openTheoryFile(${t.id})">👁</button>` : ''}
-        <button class="btn-small btn-danger" onclick="deleteTheoryItem(${t.id})">🗑</button>
-      </div>
+     <div class="theory-item">
+       <div class="theory-item-icon">${theoryIcon(t.type)}</div>
+       <div class="theory-item-content">
+         <div class="theory-item-title">${escapeHtml(t.title || 'Без названия')}</div>
+         ${t.type === 'note' ? `<div class="theory-item-sub">${escapeHtml((t.content || '').slice(0, 100))}</div>` : ''}
+         ${t.type === 'link' ? `<div class="theory-item-sub">${escapeHtml(t.url || t.content || '')}</div>` : ''}
+         ${(t.type === 'file' || t.type === 'image') && t.original_name ? `<div class="theory-item-sub">${escapeHtml(t.original_name)}</div>` : ''}
+       </div>
+       <div class="theory-item-actions">
+         ${(t.type === 'file' || t.type === 'image') ? `<button class="btn-icon" onclick="event.stopPropagation(); openTheoryFile(${t.id})" title="Открыть">👁</button>` : ''}
+         <button class="btn-icon delete" onclick="event.stopPropagation(); deleteTheoryItem(${t.id})" title="Удалить">🗑</button>
+       </div>
     </div>
   `).join('');
 }
@@ -698,9 +773,23 @@ function theoryIcon(type) {
 }
 
 async function deleteTheoryItem(id) {
-  if (!confirm('Удалить?')) return;
-  await window.api.deleteTheory(id);
-  refreshTheory();
+  showModal({
+    title: '🗑 Удалить элемент теории?',
+    content: 'Элемент будет удалён из материала. Это действие нельзя отменить.',
+    buttons: [
+      { label: 'Отмена', action: 'close' },
+      {
+        label: 'Удалить',
+        class: 'primary',
+        onClick: async () => {
+          window.closeModal();
+          await window.api.deleteTheory(id);
+          await refreshTheory();
+          showToast('Элемент удалён', 'success');
+        },
+      },
+    ],
+  });
 }
 
 function openTheoryFile(id) {
@@ -722,7 +811,7 @@ function closeTheoryNoteModal() {
 async function saveTheoryNote() {
   const title = document.getElementById('theory-note-title').value.trim();
   const content = document.getElementById('theory-note-content').value.trim();
-  if (!title && !content) { alert('Заполните заголовок или содержимое'); return; }
+  if (!title && !content) { showToast('Заполните заголовок или содержимое'); return; }
   await window.api.createTheoryNote(currentMaterialForEdit.id, { title, content });
   closeTheoryNoteModal();
   refreshTheory();
@@ -741,7 +830,7 @@ function closeTheoryLinkModal() {
 async function saveTheoryLink() {
   const title = document.getElementById('theory-link-title').value.trim();
   const url = document.getElementById('theory-link-url').value.trim();
-  if (!url) { alert('Введите URL'); return; }
+  if (!url) { showToast('Введите URL'); return; }
   await window.api.createTheoryLink(currentMaterialForEdit.id, { title, url });
   closeTheoryLinkModal();
   refreshTheory();
@@ -768,6 +857,26 @@ async function addTheoryFile() {
 // ============================================
 // КЛАССЫ
 // ============================================
+async function deleteClassFromList(id) {
+  showModal({
+    title: '🗑 Удалить класс?',
+    content: 'Класс будет удалён вместе со списком учеников. Это действие нельзя отменить.',
+    buttons: [
+      { label: 'Отмена', action: 'close' },
+      {
+        label: 'Удалить',
+        class: 'primary',
+        onClick: async () => {
+          window.closeModal();
+          await window.api.deleteClass(id);
+          await refreshClasses();
+          showToast('Класс удалён', 'success');
+        },
+      },
+    ],
+  });
+}
+window.deleteClassFromList = deleteClassFromList;
 async function refreshClasses() {
   const list = document.getElementById('classes-list');
   if (!list) return;
@@ -792,6 +901,9 @@ async function refreshClasses() {
         <div class="material-stats">
           <span class="material-badge">${c.students_count || 0} уч.</span>
         </div>
+        <div class="material-actions">
+          <button class="btn-icon delete" onclick="event.stopPropagation(); deleteClassFromList(${c.id})" title="Удалить">🗑</button>
+        </div>
       </div>
     `).join('');
   }
@@ -809,7 +921,7 @@ function closeCreateClass() {
 
 async function confirmCreateClass() {
   const title = document.getElementById('new-class-title').value.trim();
-  if (!title) { alert('Введите название'); return; }
+  if (!title) { showToast('Введите название'); return; }
   const result = await window.api.createClass({
     title: title,
     description: document.getElementById('new-class-desc').value.trim(),
@@ -858,38 +970,67 @@ function renderEditStudents() {
   }
 
   list.innerHTML = currentStudents.map(s => `
-    <div class="student-row">
-      <span>${escapeHtml(s.full_name)}</span>
-      <button class="btn-small btn-danger" onclick="removeStudent(${s.id})">✕</button>
-    </div>
+   <div class="student-row-class">
+     <span class="student-row-class-name">${escapeHtml(s.full_name)}</span>
+     <button class="student-row-class-remove" onclick="removeStudent(${s.id})" title="Удалить">✕</button>
+   </div>
   `).join('');
 }
 
 async function removeStudent(id) {
-  if (!confirm('Удалить ученика?')) return;
-  await window.api.deleteStudent(id);
-  const cls = await window.api.getClass(currentClassForEdit.id);
-  currentStudents = cls.students || [];
-  renderEditStudents();
+  showModal({
+    title: '🗑 Удалить ученика?',
+    content: 'Ученик будет удалён из класса. Это действие нельзя отменить.',
+    buttons: [
+      { label: 'Отмена', action: 'close' },
+      {
+        label: 'Удалить',
+        class: 'primary',
+        onClick: async () => {
+          window.closeModal();
+          await window.api.deleteStudent(id);
+          const cls = await window.api.getClass(currentClassForEdit.id);
+          currentStudents = cls.students || [];
+          renderEditStudents();
+          showToast('Ученик удалён', 'success');
+        },
+      },
+    ],
+  });
 }
 
 async function saveClassChanges() {
   if (!currentClassForEdit) return;
   const title = document.getElementById('edit-class-title').value.trim();
-  if (!title) { alert('Введите название'); return; }
+  if (!title) { showToast('Введите название'); return; }
   await window.api.updateClass(currentClassForEdit.id, {
     title: title,
     description: document.getElementById('edit-class-desc').value.trim(),
   });
-  alert('Сохранено');
+  showToast('Сохранено');
   closeEditClass();
 }
 
 async function deleteCurrentClass() {
   if (!currentClassForEdit) return;
-  if (!confirm('Удалить класс «' + currentClassForEdit.title + '»?')) return;
-  await window.api.deleteClass(currentClassForEdit.id);
-  closeEditClass();
+  const className = currentClassForEdit.title;
+  showModal({
+    title: '🗑 Удалить класс?',
+    content: 'Класс «' + className + '» будет удалён вместе со списком учеников. Это действие нельзя отменить.',
+    buttons: [
+      { label: 'Отмена', action: 'close' },
+      {
+        label: 'Удалить',
+        class: 'primary',
+        onClick: async () => {
+          window.closeModal();
+          await window.api.deleteClass(currentClassForEdit.id);
+          closeEditClass();
+          showToast('Класс удалён', 'success');
+        },
+      },
+    ],
+  });
 }
 
 function openAddStudents() {
@@ -903,7 +1044,7 @@ function closeAddStudents() {
 
 async function confirmAddStudents() {
   const text = document.getElementById('bulk-students-text').value.trim();
-  if (!text) { alert('Введите список'); return; }
+  if (!text) { showToast('Введите список'); return; }
   await window.api.addStudentsBulk(currentClassForEdit.id, text);
   const cls = await window.api.getClass(currentClassForEdit.id);
   currentStudents = cls.students || [];
@@ -917,6 +1058,7 @@ async function confirmAddStudents() {
 async function refreshHistory() {
   const list = document.getElementById('history-list');
   if (!list) return;
+
   const lessons = await window.api.listLessons(50);
 
   if (!lessons || lessons.length === 0) {
@@ -931,14 +1073,20 @@ async function refreshHistory() {
   }
 
   list.innerHTML = lessons.map(l => `
-    <div class="material-card">
+    <div class="material-card" onclick="openLessonDetails(${l.id})" style="cursor:pointer;">
       <div class="material-icon">📊</div>
       <div class="material-content">
-        <div class="material-title">${escapeHtml(l.material_title || 'Урок')}</div>
-        <div class="material-sub">${escapeHtml(l.class_title || '')} · ${formatDate(l.created_at)}</div>
+        <div class="material-title">${escapeHtml(l.material_title || 'Урок без материала')}</div>
+        <div class="material-sub">
+          ${l.class_title ? '📚 ' + escapeHtml(l.class_title) + ' · ' : ''}
+          ${formatDate(l.started_at)}
+        </div>
+        <div class="material-sub" style="font-size:12px; color:#7dffb0;">
+          ✅ ${l.total_answers || 0} ответов · ${Math.round(l.avg_green_pct || 0)}% поняли
+        </div>
       </div>
       <div class="material-stats">
-        <span class="material-badge">${l.avg_green_pct || 0}%</span>
+        <span class="material-badge">${l.answers_count || 0} отв.</span>
       </div>
     </div>
   `).join('');
@@ -1015,9 +1163,23 @@ function closeCloudpubManage() {
 }
 
 async function doCloudpubLogout() {
-  if (!confirm('Выйти из CloudPub?')) return;
-  await window.api.logoutCloudpub();
-  closeCloudpubManage();
+  showModal({
+    title: '🚪 Выйти из CloudPub?',
+    content: 'После выхода ученики не смогут подключаться через интернет. Локальная сеть работать будет.',
+    buttons: [
+      { label: 'Отмена', action: 'close' },
+      {
+        label: 'Выйти',
+        class: 'primary',
+        onClick: async () => {
+          window.closeModal();
+          await window.api.logoutCloudpub();
+          closeCloudpubManage();
+          showToast('Вы вышли из CloudPub', 'success');
+        },
+      },
+    ],
+  });
 }
 
 // ============================================
@@ -1074,4 +1236,77 @@ document.addEventListener('click', (e) => {
   if (e.target.classList.contains('modal')) {
     e.target.style.display = 'none';
   }
+});
+// ============================================
+// ДЕТАЛИ УРОКА
+// ============================================
+async function openLessonDetails(lessonId) {
+  const lesson = await window.api.getLesson(lessonId);
+  const grades = await window.api.getGradesForLesson(lessonId);
+
+  if (!lesson) {
+    showToast('Урок не найден');
+    return;
+  }
+
+  let msg = `📊 УРОК\n\n`;
+  msg += `📁 Материал: ${lesson.material_title || '—'}\n`;
+  msg += `📚 Класс: ${lesson.class_title || '—'}\n`;
+  msg += `📅 Дата: ${formatDate(lesson.started_at)}\n`;
+  msg += `❓ Вопросов: ${lesson.total_questions || 0}\n`;
+  msg += `✅ Ответов: ${lesson.total_answers || 0}\n`;
+  msg += `📈 Поняли: ${Math.round(lesson.avg_green_pct || 0)}%\n\n`;
+
+  if (grades && grades.length > 0) {
+    msg += `📋 ОЦЕНКИ:\n`;
+    grades.forEach(g => {
+      const parts = [];
+      if (g.activity) parts.push(`акт: ${g.activity}`);
+      if (g.test) parts.push(`тест: ${g.test}`);
+      if (g.itog) parts.push(`итог: ${g.itog}`);
+      if (g.journal) parts.push(`журнал: ${g.journal}`);
+      msg += `• ${g.student_name} — ${parts.join(', ') || '—'}\n`;
+    });
+  } else {
+    msg += `Оценки не выставлены.`;
+  }
+
+   showModal({
+    title: '📊 ' + (lesson.material_title || 'Урок'),
+    content: msg.replace('📊 УРОК\n\n', ''),  // убираем дублирующий заголовок
+    buttons: [
+      { label: 'Закрыть', class: 'primary', action: 'close' },
+    ],
+  });
+}
+
+window.openLessonDetails = openLessonDetails;
+// ============================================
+// АВТО-ФИКС ФОКУСА (если input не получает фокус)
+// ============================================
+document.addEventListener('click', (e) => {
+  const el = document.elementFromPoint(e.clientX, e.clientY);
+  // Если под курсором — фон, а не input
+  if (el && (el.classList.contains('bg-mesh') ||
+             el.classList.contains('bg-particles') ||
+             el.classList.contains('particle'))) {
+    // Скрыть фон на миллисекунду и попробовать ещё раз
+    const bg1 = document.querySelector('.bg-mesh');
+    const bg2 = document.querySelector('.bg-particles');
+    if (bg1) bg1.style.display = 'none';
+    if (bg2) bg2.style.display = 'none';
+    const realEl = document.elementFromPoint(e.clientX, e.clientY);
+    if (bg1) bg1.style.display = '';
+    if (bg2) bg2.style.display = '';
+    if (realEl && realEl !== el && realEl.focus) {
+      realEl.focus();
+      if (realEl.click) realEl.click();
+    }
+  }
+}, true);
+
+// Дополнительно — фикс фокуса при возврате окна
+window.addEventListener('focus', () => {
+  // Сброс "залипшего" состояния
+  document.body.style.pointerEvents = 'auto';
 });

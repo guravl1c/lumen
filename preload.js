@@ -18,38 +18,39 @@ contextBridge.exposeInMainWorld('api', {
   startNgrok: () => ipcRenderer.invoke('start-ngrok'),
   stopNgrok: () => ipcRenderer.invoke('stop-ngrok'),
 
-  // Утилиты
+  // пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
   openTeacher: () => ipcRenderer.invoke('open-teacher'),
   closeTeacher: () => ipcRenderer.invoke('close-teacher'),
   isTeacherOpen: () => ipcRenderer.invoke('is-teacher-open'),
 
-  // Обновления и логи
+  // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅ
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   openLogsFolder: () => ipcRenderer.invoke('open-logs-folder'),
   openLogFile: () => ipcRenderer.invoke('open-log-file'),
 
-  // Урок
+  // пїЅпїЅпїЅпїЅ
   setLessonMaterial: (id) => ipcRenderer.invoke('set-lesson-material', id),
   getLessonMaterial: () => ipcRenderer.invoke('get-lesson-material'),
   setLessonClass: (id) => ipcRenderer.invoke('set-lesson-class', id),
   getLessonClass: () => ipcRenderer.invoke('get-lesson-class'),
 
-  // Классы
+  // пїЅпїЅпїЅпїЅпїЅпїЅ
   listClasses: () => ipcRenderer.invoke('classes:list'),
   getClass: (id) => ipcRenderer.invoke('classes:get', id),
   createClass: (data) => ipcRenderer.invoke('classes:create', data),
   updateClass: (id, data) => ipcRenderer.invoke('classes:update', id, data),
   deleteClass: (id) => ipcRenderer.invoke('classes:delete', id),
 
-  // Ученики
+  // пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
   addStudent: (classId, fullName) => ipcRenderer.invoke('students:add', classId, fullName),
   addStudentsBulk: (classId, text) => ipcRenderer.invoke('students:addBulk', classId, text),
   deleteStudent: (id) => ipcRenderer.invoke('students:delete', id),
   updateStudent: (id, fullName) => ipcRenderer.invoke('students:update', id, fullName),
+  
 
-  // Материалы
+  // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
   listMaterials: () => ipcRenderer.invoke('materials:list'),
   getMaterial: (id) => ipcRenderer.invoke('materials:get', id),
   createMaterial: (data) => ipcRenderer.invoke('materials:create', data),
@@ -57,12 +58,12 @@ contextBridge.exposeInMainWorld('api', {
   deleteMaterial: (id) => ipcRenderer.invoke('materials:delete', id),
   toggleFavorite: (id) => ipcRenderer.invoke('materials:toggleFavorite', id),
 
-  // Вопросы
+  // пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
   createQuestion: (materialId, data) => ipcRenderer.invoke('questions:create', materialId, data),
   updateQuestion: (id, data) => ipcRenderer.invoke('questions:update', id, data),
   deleteQuestion: (id) => ipcRenderer.invoke('questions:delete', id),
 
-  // Теория
+  // пїЅпїЅпїЅпїЅпїЅпїЅ
   listTheory: (materialId) => ipcRenderer.invoke('theory:list', materialId),
   createTheoryNote: (materialId, data) => ipcRenderer.invoke('theory:createNote', materialId, data),
   createTheoryLink: (materialId, data) => ipcRenderer.invoke('theory:createLink', materialId, data),
@@ -73,7 +74,7 @@ contextBridge.exposeInMainWorld('api', {
   pickFile: (fileType) => ipcRenderer.invoke('theory:pickFile', fileType),
   readFileBase64: (id) => ipcRenderer.invoke('theory:readFileBase64', id),
 
-  // Уроки
+  // пїЅпїЅпїЅпїЅпїЅ
   listLessons: (limit) => ipcRenderer.invoke('lessons:list', limit),
   getLesson: (id) => ipcRenderer.invoke('lessons:get', id),
   createLesson: (data) => ipcRenderer.invoke('lessons:create', data),
@@ -81,12 +82,17 @@ contextBridge.exposeInMainWorld('api', {
   deleteLesson: (id) => ipcRenderer.invoke('lessons:delete', id),
   saveAnswer: (data) => ipcRenderer.invoke('answers:save', data),
 
-  // Настройки
+  // РћС†РµРЅРєРё
+  saveGradesBulk: (lessonId, gradesMap) => ipcRenderer.invoke('grades:saveBulk', lessonId, gradesMap),
+  getGradesForLesson: (lessonId) => ipcRenderer.invoke('grades:listForLesson', lessonId),
+  getGradesForStudent: (studentName, limit) => ipcRenderer.invoke('grades:listForStudent', studentName, limit),
+
+  // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
   getSetting: (key, def) => ipcRenderer.invoke('settings:get', key, def),
   setSetting: (key, value) => ipcRenderer.invoke('settings:set', key, value),
   getAllSettings: () => ipcRenderer.invoke('settings:all'),
 
-  // События
+  // пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
   onFlaskStatus: (cb) => ipcRenderer.on('flask-status', (e, data) => cb(data)),
   onCloudpubStatus: (cb) => ipcRenderer.on('cloudpub-status', (e, data) => cb(data))
 });

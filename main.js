@@ -597,6 +597,17 @@ ipcMain.handle('settings:set', (e, key, value) => db.setSetting(key, value));
 ipcMain.handle('settings:all', () => db.getAllSettings());
 
 // ============================================
+// IPC — ОЦЕНКИ
+// ============================================
+ipcMain.handle('grades:saveBulk', (e, lessonId, gradesMap) => {
+  log.info(`[Grades] Сохранение оценок для урока ${lessonId}: ${Object.keys(gradesMap).length} учеников`);
+  return db.saveGradesBulk(lessonId, gradesMap);
+});
+
+ipcMain.handle('grades:listForLesson', (e, lessonId) => db.getGradesForLesson(lessonId));
+ipcMain.handle('grades:listForStudent', (e, studentName, limit) => db.getGradesForStudent(studentName, limit));
+
+// ============================================
 // IPC — ПАНЕЛЬ УЧИТЕЛЯ
 // ============================================
 ipcMain.handle('open-teacher', () => {
@@ -610,7 +621,7 @@ ipcMain.handle('open-teacher', () => {
     backgroundColor: '#0f1220',
     autoHideMenuBar: true,
     icon: path.join(__dirname, 'build', 'icon.ico'),
-    webPreferences: { contextIsolation: true, nodeIntegration: false }
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false }
   });
   teacherWindow.loadURL('http://localhost:5000/teacher');
   teacherWindow.on('closed', () => { teacherWindow = null; });

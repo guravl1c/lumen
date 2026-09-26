@@ -262,13 +262,20 @@
           <input type="checkbox" class="switch" id="set-theme" onchange="toggleTheme(this.checked)">
         </label>
       </div>
+      <div class="settings-section">
+        <h3>🔧 Диагностика</h3>
+        <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+           <button class="btn btn-primary" onclick="window.location.reload()">🔄 Перезагрузить интерфейс</button>
+           <span class="sub" style="font-size: 13px;">Если что-то не работает — перезагрузите. Данные не потеряются.</span>
+        </div>
+      </div>
 
       <div class="settings-section">
         <h3>ℹ️ О приложении</h3>
         <div class="about-info">
           <div><b>Lumen</b></div>
           <div>Illuminate understanding</div>
-          <div>Version <span id="about-version-2">1.1.0</span> · Electron</div>
+          <div>Version <span id="about-version-2">1.2.0</span> · Electron</div>
           <div style="margin-top:8px; color: #8a92b0;">Real-time formative assessment for teachers</div>
         </div>
       </div>
@@ -835,7 +842,7 @@
     }
   })();
 </script>
-
+<script src="modal.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
