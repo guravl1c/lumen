@@ -640,6 +640,11 @@ ipcMain.handle('close-teacher', () => {
 // APP
 // ============================================
 app.whenReady().then(() => {
+  try {
+    db.ensureExampleData();
+  } catch (e) {
+    log.error('[DB] Не удалось создать пример:', e.message);
+  }
   createWindow();
   setupAutoUpdater();
   app.on('activate', () => {

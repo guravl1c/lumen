@@ -634,6 +634,117 @@ function getGradesForStudent(studentName, limit = 20) {
     LIMIT ?
   `).all(studentName, limit);
 }
+// ============================================
+// ПРИМЕР ДАННЫХ (класс + материал)
+// ============================================
+function ensureExampleData() {
+  try {
+    // Проверяем, есть ли уже пример
+    const existing = db.prepare('SELECT id FROM classes WHERE title = ?').get('8А (пример заполнения)');
+    if (existing) {
+      console.log('[DB] Пример класса уже существует');
+      return;
+    }
+
+    const now = Date.now();
+
+    // === КЛАСС ===
+    const classInfo = db.prepare(`
+      INSERT INTO classes (title, grade, description, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(
+      '8А (пример заполнения)',
+      '8',
+      'Это пример. Можете использовать его как образец для создания своих классов.',
+      now, now
+    );
+    const classId = classInfo.lastInsertRowid;
+
+    // Ученики
+    const students = [
+      'Иванов Пётр',
+      'Петрова Анна',
+      'Сидоров Максим',
+      'Козлов Дмитрий',
+      'Морозова Алина',
+      'Смирнов Игорь',
+    ];
+    const studentStmt = db.prepare(`
+      INSERT INTO students (class_id, full_name, position, created_at)
+      VALUES (?, ?, ?, ?)
+    `);
+    students.forEach((name, i) => {
+      studentStmt.run(classId, name, i, now);
+    });
+
+    // === МАТЕРИАЛ ===
+    const materialInfo = db.prepare(`
+      INSERT INTO materials (title, description, subject, grade, show_theory_to_students, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      'Теорема Пифагора (пример заполнения)',
+      'Это пример. Используйте как образец для своих материалов.',
+      'Геометрия',
+      '8А',
+      1,
+      now, now
+    );
+    const materialId = materialInfo.lastInsertRowid;
+
+    // Вопросы
+    const questionStmt = db.prepare(`
+      INSERT INTO questions (material_id, position, text, mode, timer, keywords, quiz_options, quiz_correct, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    questionStmt.run(
+      materialId, 0,
+      'Кто понял, почему теорема Пифагора работает?',
+      'buttons', 30, '', '[]', null, now
+    );
+
+    questionStmt.run(
+      materialId, 1,
+      'Чему равен квадрат гипотенузы, если катеты 3 и 4?',
+      'quiz', 60, '',
+      JSON.stringify(['5', '7', '12', '25']),
+      0,
+      now
+    );
+
+    questionStmt.run(
+      materialId, 2,
+      'Объясни своими словами, что такое гипотенуза',
+      'text', 60,
+      'гипотенуза, прямой угол, сторона',
+      '[]', null, now
+    );
+
+    // Теория
+    const theoryStmt = db.prepare(`
+      INSERT INTO theory_items (material_id, position, type, title, content, original_name, size, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    theoryStmt.run(
+      materialId, 0, 'note',
+      'Теорема Пифагора',
+      '# Теорема Пифагора\n\nВ прямоугольном треугольнике квадрат **гипотенузы** равен сумме квадратов катетов.\n\n**a² + b² = c²**\n\nГде **a** и **b** — катеты, **c** — гипотенуза.',
+      '', 0, now
+    );
+
+    theoryStmt.run(
+      materialId, 1, 'link',
+      'Википедия: Теорема Пифагора',
+      'https://ru.wikipedia.org/wiki/Теорема_Пифагора',
+      '', 0, now
+    );
+
+    console.log('[DB] Пример класса и материала создан');
+  } catch (e) {
+    console.error('[DB] Ошибка создания примера:', e.message);
+  }
+}
 module.exports = {
   listMaterials, getMaterial, createMaterial, updateMaterial, deleteMaterial, toggleFavorite,
   createQuestion, updateQuestion, deleteQuestion,
@@ -642,5 +753,5 @@ module.exports = {
   addStudentToClass, addStudentsBulk, deleteStudent, updateStudent,
   createLesson, finishLesson, listLessons, getLesson, saveAnswer, deleteLesson,
   getSetting, setSetting, getAllSettings, saveGrade, saveGradesBulk, getGradesForLesson, getGradesForStudent,
-  db, DB_PATH, FILES_DIR
+  db, DB_PATH, ensureExampleData, FILES_DIR
 };
